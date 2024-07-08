@@ -20,6 +20,7 @@
 #include <Eigen/StdVector>
 #include <vector>
 #include <algorithm>
+#include <io.h>
 #include <iostream>
 
 #include "custom_arap.h"
@@ -172,16 +173,27 @@ bool key_down(igl::opengl::glfw::Viewer& viewer, unsigned char key, int mods)
 
 int main(int argc, char* argv[])
 {
+
+
+    // Check the current working directory
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        std::cout << "Current working dir: " << cwd << std::endl;
+    } else {
+        perror("getcwd() error");
+        return 1;
+    }
+
     using namespace Eigen;
     using namespace std;
     //igl::readOFF("C:/Users/brichter/Documents/CG/libigl-example-project/decimated-knight.off", V, F);
-    igl::readOFF("C:/Users/brichter/Documents/CG/libigl-example-project/cube.off", V, F);
+    igl::readOFF("../cube.off", V, F);
     U = V;
     //igl::readDMAT("C:/Users/brichter/Documents/CG/libigl-example-project/decimated-knight-selection.dmat", S);
-    igl::readDMAT("C:/Users/brichter/Documents/CG/libigl-example-project/cube-selection.dmat", S);
-    igl::readDMAT("C:/Users/brichter/Documents/CG/libigl-example-project/cube-normals.dmat", Normals);
+    igl::readDMAT("../cube-selection.dmat", S);
+    igl::readDMAT("../cube-normals.dmat", Normals);
 
-    igl::readOFF("C:/Users/brichter/Documents/CG/libigl-example-project/plane-cube.off", Vf, Ff);
+    igl::readOFF("../plane-cube.off", Vf, Ff);
     std::cout << Normals << std::endl;
 
     // vertices in selection

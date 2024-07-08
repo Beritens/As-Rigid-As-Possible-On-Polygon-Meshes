@@ -15,21 +15,15 @@
 template <typename Scalar>
 using MatrixXX = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>;
 
-template <
-  typename DerivedV,
-  typename DerivedF,
-  typename Derivedb>
 bool custom_arap_precomputation(
-  const Eigen::MatrixBase<DerivedV> & V,
-  const Eigen::MatrixBase<DerivedF> & F,
-  const int dim,
-  const Eigen::MatrixBase<Derivedb> & b,
-  igl::ARAPData & data)
+     const Eigen::MatrixXd& V,
+     const Eigen::MatrixXi& F,
+     int dim,
+     const Eigen::VectorXi& b,
+     igl::ARAPData& data)
 {
   using namespace std;
   using namespace Eigen;
-  typedef typename DerivedV::Scalar Scalar;
-  typedef typename DerivedF::Scalar Integer;
   // number of vertices
   const int n = V.rows();
   data.n = n;
@@ -49,19 +43,19 @@ bool custom_arap_precomputation(
   assert(data.dim <= V.cols() && "solve dim should be <= embedding");
   bool flat = (V.cols() - data.dim)==1;
 
-  MatrixXX<Scalar> plane_V;
-  MatrixXX<Integer> plane_F;
-  typedef SparseMatrix<Scalar> SparseMatrixS;
+  MatrixXX<double> plane_V;
+  MatrixXX<int> plane_F;
+  typedef SparseMatrix<double> SparseMatrixS;
   SparseMatrixS ref_map,ref_map_dim;
   if(flat)
   {
-    project_isometrically_to_plane(V,F,plane_V,plane_F,ref_map);
-    repdiag(ref_map,dim,ref_map_dim);
+    igl::project_isometrically_to_plane(V,F,plane_V,plane_F,ref_map);
+    igl::repdiag(ref_map,dim,ref_map_dim);
   }
-  const MatrixXX<Scalar>& ref_V = (flat?plane_V:V);
-  const MatrixXX<Integer>& ref_F = (flat?plane_F:F);
+  const MatrixXX<double>& ref_V = (flat?plane_V:V);
+  const MatrixXX<int>& ref_F = (flat?plane_F:F);
   SparseMatrixS L;
-  cotmatrix(V,F,L);
+  igl::cotmatrix(V,F,L);
 
   igl::ARAPEnergyType eff_energy = data.energy;
   if(eff_energy == igl::ARAP_ENERGY_TYPE_DEFAULT)
@@ -102,7 +96,7 @@ bool custom_arap_precomputation(
   {
     if(eff_energy == igl::ARAP_ENERGY_TYPE_ELEMENTS)
     {
-      speye(F.rows(),G_sum);
+      igl::speye(F.rows(),G_sum);
     }else
     {
       igl::speye(n,G_sum);
@@ -159,14 +153,12 @@ bool custom_arap_precomputation(
 
 
 
-template <
-  typename Derivedbc,
-  typename DerivedU>
+
 bool custom_arap_solve(
-  const Eigen::MatrixBase<Derivedbc> & bc,
-  igl::ARAPData & data,
-  Eigen::MatrixBase<DerivedU> & U,
-  Eigen::MatrixXd & rotations)
+    const Eigen::MatrixXd& bc,
+    igl::ARAPData& data,
+    Eigen::MatrixXd& U,
+    Eigen::MatrixXd & rotations)
 {
   using namespace Eigen;
   using namespace std;

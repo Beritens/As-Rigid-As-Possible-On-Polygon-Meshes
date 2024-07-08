@@ -30,21 +30,19 @@
   /// @return whether initialization succeeded
   ///
   /// \fileinfo
-  template <
-    typename DerivedV,
-    typename DerivedF,
-    typename Derivedb>
+
   bool custom_arap_precomputation(
-      const Eigen::MatrixBase<DerivedV>& V,
-      const Eigen::MatrixBase<DerivedF>& F,
-      const int dim,
-      const Eigen::MatrixBase<Derivedb>& b,
+      const Eigen::MatrixXd& V,
+      const Eigen::MatrixXi& F,
+      int dim,
+      const Eigen::VectorXi& b,
       igl::ARAPData& data);
   /// Conduct arap solve.
   ///
   /// @param[in] bc  #b by dim list of boundary conditions
   /// @param[in] data  struct containing necessary precomputation and parameters
   /// @param[in,out] U  #V by dim initial guess
+  /// @param[out] rotations rotations for each face
   ///
   /// \fileinfo
   ///
@@ -55,14 +53,11 @@
   /// Taking a reference to MatrixBase in this case thus allows the user to provide e.g.
   /// a map to the position data, allowing seamless interoperability with user-defined
   /// datastructures without requiring a copy.
-  template <
-    typename Derivedbc,
-    typename DerivedU>
   bool custom_arap_solve(
-      const Eigen::MatrixBase<Derivedbc>& bc,
+      const Eigen::MatrixXd& bc,
       igl::ARAPData& data,
-      Eigen::MatrixBase<DerivedU>& U,
-      Eigen::MatrixXd& rotations);
+      Eigen::MatrixXd& U,
+      Eigen::MatrixXd & rotations);
 
 
 #endif //CUSTOM_ARAP_H
