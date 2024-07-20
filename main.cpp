@@ -20,8 +20,9 @@
 #include <Eigen/StdVector>
 #include <vector>
 #include <algorithm>
-#include <io.h>
 #include <iostream>
+
+#include <TinyAD/ScalarFunction.hh>
 
 #include "custom_arap.h"
 
@@ -175,14 +176,7 @@ int main(int argc, char* argv[])
 {
 
 
-    // Check the current working directory
-    char cwd[1024];
-    if (getcwd(cwd, sizeof(cwd)) != NULL) {
-        std::cout << "Current working dir: " << cwd << std::endl;
-    } else {
-        perror("getcwd() error");
-        return 1;
-    }
+
 
     using namespace Eigen;
     using namespace std;
