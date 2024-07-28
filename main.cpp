@@ -35,9 +35,14 @@ std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond> >
 RotationList;
 
 const Eigen::RowVector3d sea_green(70. / 255., 252. / 255., 167. / 255.);
-Eigen::MatrixXd V, U, Normals;
+//Eigen::MatrixXd V, U, Normals;
+Eigen::MatrixXd Polygons;
+Eigen::MatrixXd originalPolygons;
 Eigen::MatrixXd rotations;
 Eigen::MatrixXi F;
+Eigen::MatrixXi Groups;
+Eigen::MatrixXi VertsMap;
+Eigen::MatrixXd Verts;
 Eigen::MatrixXd Vf;
 Eigen::MatrixXi Ff;
 Eigen::VectorXi S, b;
@@ -50,20 +55,21 @@ double x = 0;
 double y = 0;
 double z = 0;
 
-void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &points) {
+void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &poly) {
+    using namespace Eigen;
     viewer.data().clear_points();
 
     std::map<int, std::vector<int> > face_vert_map;
     int v = 0;
     Vf.resize(F.rows(), 3);
-    for (int i = 0; i < 6; i++) {
-        viewer.data().add_points(points.row(i), Eigen::RowVector3d(1, 0, 0));
-    }
+    // for (int i = 0; i < 6; i++) {
+    //     viewer.data().add_points(points.row(i), Eigen::RowVector3d(1, 0, 0));
+    // }
     for (int i = 0; i < F.rows(); i++) {
         auto row = F.row(i);
-        Eigen::Vector3d vert1 = rotations.block<3, 3>(0, row(0) * 3) * Normals.row(row(0)).transpose();
-        Eigen::Vector3d vert2 = rotations.block<3, 3>(0, row(1) * 3) * Normals.row(row(1)).transpose();
-        Eigen::Vector3d vert3 = rotations.block<3, 3>(0, row(2) * 3) * Normals.row(row(2)).transpose();
+        Vector3d vert1 = poly.row(row(0))(seq(0,2)).transpose();
+        Vector3d vert2 = poly.row(row(1))(seq(0,2)).transpose();
+        Vector3d vert3 =  poly.row(row(2))(seq(0,2)).transpose();
 
         for (int j = 0; j < 3; j++) {
             if (face_vert_map.find(row(j)) != face_vert_map.end()) {
@@ -82,7 +88,10 @@ void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &po
 
         Eigen::Vector3d b;
 
-        b << points.row(row(0)) * vert1, points.row(row(1)) * vert2, points.row(row(2)) * vert3;
+
+        //b << points.row(row(0)) * vert1, points.row(row(1)) * vert2, points.row(row(2)) * vert3;
+        b << poly(row(0), 3), poly(row(1), 3), poly(row(2), 3);
+
 
         Eigen::Vector3d x = m.colPivHouseholderQr().solve(b);
 
@@ -93,60 +102,143 @@ void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &po
     viewer.data().set_mesh(Vf, Ff);
 }
 
+template<class T>
+Eigen::Vector3<T> getPoint(Eigen::Vector4<T> poly1, Eigen::Vector4<T> poly2, Eigen::Vector4<T> poly3) {
+    Eigen::Vector3<T> normal1 = poly1.template head<3>();
+    Eigen::Vector3<T> normal2 = poly2.template head<3>();
+    Eigen::Vector3<T> normal3 = poly3.template head<3>();
+
+    Eigen::Matrix3<T> m;
+    m.row(0) = normal1;
+    m.row(1) = normal2;
+    m.row(2) = normal3;
+
+    Eigen::Vector3<T> b;
+    b << poly1(3), poly2(3), poly3(3);
+
+    Eigen::Vector3<T> x = m.colPivHouseholderQr().solve(b);
+    return x;
+
+
+}
+
+
+
 int main(int argc, char *argv[]) {
     using namespace Eigen;
     using namespace std;
-    igl::readOFF("../cube.off", V, F);
-    U = V;
-    igl::readDMAT("../cube-selection.dmat", S);
-    igl::readDMAT("../cube-normals.dmat", Normals);
+    //igl::readOFF("../cube.off", V, F);
+    //U = V;
+    //igl::readDMAT("../cube-selection.dmat", S);
+    //igl::readDMAT("../cube-normals.dmat", Normals);
+    igl::readDMAT("../cube-planes.dmat", Polygons);
+
+    originalPolygons = Polygons;
+    igl::readDMAT("../cube-connectivity.dmat", F);
 
     igl::readOFF("../plane-cube.off", Vf, Ff);
-    std::cout << Normals << std::endl;
+    //std::cout << Normals << std::endl;
 
 
+    igl::opengl::glfw::Viewer viewer;
+    draw_face_mesh(viewer, Polygons);
     //
     bool redraw = false;
     std::mutex m;
     std::thread optimization_thread(
         [&]() {
+
+            Groups.resize(F.rows(), 6);
+            VertsMap.resize(F.rows(), 4);
+            Verts.resize(F.rows(),3);
             // Pre-compute stuff
+            for(int i = 0; i < F.rows(); i++) {
+                VertsMap(i,0) = i;
+
+                Vector4d poly1 = Polygons.row(F(i,0));
+                Vector4d poly2 = Polygons.row(F(i,1));
+                Vector4d poly3 = Polygons.row(F(i,2));
+
+                Verts.row(i) = getPoint(poly1,poly2,poly3);
+
+                for(int j = 0; j< 3; j++) {
+
+                    Groups(i,j)= F(i,j);
+                    int a = j;
+                    int b = (j+1) % 3;
+                    for(int k = 0; k < F.rows(); k++) {
+                        if(k == i) {
+                            continue;
+                        }
+                        int c = 0;
+                        int r = -1;
+                        for(int v = 0; v < 3; v++) {
+                            if(F(k,v) == F(i,a) || F(k,v) == F(i, b)) {
+                                c++;
+                            }
+                            else {
+                                r = F(k,v);
+                            }
+
+                        }
+                        if(c>=2) {
+                            Groups(i,j+3) = r;
+                            VertsMap(i,j) = k;
+                        }
+                    }
+
+                }
+            }
+            std::cout << Groups << std::endl;
 
 
             // Set up function with 3D vertex positions as variables.
-            auto func = TinyAD::scalar_function<6>(TinyAD::range(V.rows()));
+            auto func = TinyAD::scalar_function<4>(TinyAD::range(Polygons.rows()));
 
             // Add objective term per face. Each connecting 3 vertices.
-            func.add_elements<3>(TinyAD::range(F.rows()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
+            func.add_elements<6>(TinyAD::range(F.rows()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
                 //calculate arap energy
                 using T = TINYAD_SCALAR_TYPE(element);
+                std::cout << typeid(T).name() << std::endl;
 
                 Eigen::Index f_idx = element.handle;
+                Eigen::Vector4<T> vec0 = element.variables(Groups(f_idx,0));
+                Eigen::Vector4<T> vec1 = element.variables(Groups(f_idx,1));
+                Eigen::Vector4<T> vec2 = element.variables(Groups(f_idx,2));
+                Eigen::Vector4<T> vec3 = element.variables(Groups(f_idx,3));
+                Eigen::Vector4<T> vec4 = element.variables(Groups(f_idx,4));
+                Eigen::Vector4<T> vec5 = element.variables(Groups(f_idx,5));
+
+                //get points with current polygons
+                Eigen::Vector3<T> point1 = getPoint<TinyAD::Scalar<24, double, true>>(vec0,vec1,vec2);
+                // Eigen::Vector3<T> point2 = getPoint(element.variables(Groups(f_idx, 0)),element.variables(Groups(f_idx, 1)),element.variables(Groups(f_idx, 3)));
+                // Eigen::Vector3<T> point3 = getPoint(element.variables(Groups(f_idx, 1)),element.variables(Groups(f_idx, 2)),element.variables(Groups(f_idx, 4)));
+                // Eigen::Vector3<T> point4 = getPoint(element.variables(Groups(f_idx, 0)),element.variables(Groups(f_idx, 2)),element.variables(Groups(f_idx, 5)));
                 //
-                // //get positions
-                Eigen::Vector3<T> a = element.variables(F(f_idx, 0))(seq(0, 2));
-                Eigen::Vector3<T> b = element.variables(F(f_idx, 1))(seq(0, 2));
-                Eigen::Vector3<T> c = element.variables(F(f_idx, 2))(seq(0, 2));
+                // Eigen::Vector3<T> a = point2 - point1;
+                // Eigen::Vector3<T> b = point3 - point1;
+                // Eigen::Vector3<T> c = point4 - point1;
                 //
-                //get normals
-                Eigen::Vector3<T> an = element.variables(F(f_idx, 0))(seq(3, 5));
-                Eigen::Vector3<T> bn = element.variables(F(f_idx, 1))(seq(3, 5));
-                Eigen::Vector3<T> cn = element.variables(F(f_idx, 2))(seq(3, 5));
+                // //get points in original mesh
+                // Eigen::Vector3d ogp1 = Verts.row(VertsMap(f_idx,0));
+                // Eigen::Vector3d ogp2 = Verts.row(VertsMap(f_idx,1));
+                // Eigen::Vector3d ogp3 = Verts.row(VertsMap(f_idx,2));
+                // Eigen::Vector3d ogp4 = Verts.row(VertsMap(f_idx,3));
                 //
-                Eigen::Matrix3<T> mat;
-                mat.row(0) = an;
-                mat.row(1) = bn;
-                mat.row(2) = cn;
+                // Eigen::Vector3d oa = ogp2 - ogp1;
+                // Eigen::Vector3d ob = ogp3 - ogp1;
+                // Eigen::Vector3d oc = ogp4 - ogp1;
                 //
-                Eigen::Vector3<T> r;
-                // //
-                // r << a * an, b * bn, c * cn;
-                // //
-                // Eigen::Vector3<T> _x = m.colPivHouseholderQr().solve(r);
+                // Eigen::Matrix3d v1;
+                // v1 << oa, ob, oc;
                 //
-                // //just a small test
-                return a[0];
-                //return (T)INFINITY;
+                // Eigen::Matrix3<T> v2;
+                // v2 << a, b, c;
+                //
+                // Eigen::Matrix3<T> S = v1 * v2.transpose();
+
+
+                return (T)INFINITY;
             });
 
             // Assemble inital x vector from P matrix.
@@ -154,13 +246,11 @@ int main(int argc, char *argv[]) {
             // each variable handle (vertex index) to its initial 2D value (Eigen::Vector2d).
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
-                VectorXd vec_joined(6);
-                vec_joined << V.row(v_idx).transpose(), Normals.row(v_idx).transpose();
-                return vec_joined;
+                return Polygons.row(v_idx);
             });
             // Projected Newton
             TinyAD::LinearSolver solver;
-            int max_iters = 1000;
+            int max_iters = 2;
             double convergence_eps = 1e-2;
             for (int i = 0; i < max_iters; ++i) {
                 auto [f, g, H_proj] = func.eval_with_hessian_proj(x);
@@ -170,8 +260,10 @@ int main(int argc, char *argv[]) {
                     break;
                 x = TinyAD::line_search(x, d, f, g, func);
                 func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
-                    V.row(v_idx) = p(seq(0, 2));
-                    Normals.row(v_idx) = p(seq(3, 5));
+                    std::cout << "test" << std::endl;
+                    Polygons.row(v_idx) = p;
+                    // V.row(v_idx) = p(seq(0, 2));
+                    // Normals.row(v_idx) = p(seq(3, 5));
                     //P.row(v_idx) = p;
                 }); {
                     std::lock_guard<std::mutex> lock(m);
@@ -187,7 +279,6 @@ int main(int argc, char *argv[]) {
 
 
     // Plot the mesh with pseudocolors
-    igl::opengl::glfw::Viewer viewer;
     //draw_face_mesh(viewer, V);
     //viewer.data().set_mesh(U, F);
     viewer.core().animation_max_fps = 60.;
@@ -201,8 +292,22 @@ int main(int argc, char *argv[]) {
     plugin.widgets.push_back(&menu);
 
 
+    viewer.callback_pre_draw = [&] (igl::opengl::glfw::Viewer& viewer)
+    {
+        if(redraw)
+        {
+            draw_face_mesh(viewer, Polygons);
+          //viewer.data().set_vertices(P);
+          //viewer.core().align_camera_center(P);
+          viewer.core().camera_zoom = 2;
+          {
+            std::lock_guard<std::mutex> lock(m);
+            redraw = false;
+          }
+        }
+        return false;
+    };
     // Customize the menu
-    double doubleVariable = 0.1f; // Shared between two menus
 
 
     // Draw additional windows
@@ -227,4 +332,10 @@ int main(int argc, char *argv[]) {
     };
 
     viewer.launch();
+    if(optimization_thread.joinable())
+    {
+        optimization_thread.join();
+    }
+
+    return 0;
 }
