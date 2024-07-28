@@ -112,11 +112,11 @@ Eigen::Vector3<T> getPoint(Eigen::Vector4<T> poly1, Eigen::Vector4<T> poly2, Eig
     m.row(0) = normal1;
     m.row(1) = normal2;
     m.row(2) = normal3;
-
+    //
     Eigen::Vector3<T> b;
     b << poly1(3), poly2(3), poly3(3);
-
-    Eigen::Vector3<T> x = m.colPivHouseholderQr().solve(b);
+    //
+    Eigen::Vector3<T> x = m.partialPivLu().solve(b);
     return x;
 
 
@@ -210,32 +210,37 @@ int main(int argc, char *argv[]) {
                 Eigen::Vector4<T> vec5 = element.variables(Groups(f_idx,5));
 
                 //get points with current polygons
-                Eigen::Vector3<T> point1 = getPoint<TinyAD::Scalar<24, double, true>>(vec0,vec1,vec2);
-                // Eigen::Vector3<T> point2 = getPoint(element.variables(Groups(f_idx, 0)),element.variables(Groups(f_idx, 1)),element.variables(Groups(f_idx, 3)));
-                // Eigen::Vector3<T> point3 = getPoint(element.variables(Groups(f_idx, 1)),element.variables(Groups(f_idx, 2)),element.variables(Groups(f_idx, 4)));
-                // Eigen::Vector3<T> point4 = getPoint(element.variables(Groups(f_idx, 0)),element.variables(Groups(f_idx, 2)),element.variables(Groups(f_idx, 5)));
-                //
-                // Eigen::Vector3<T> a = point2 - point1;
-                // Eigen::Vector3<T> b = point3 - point1;
-                // Eigen::Vector3<T> c = point4 - point1;
-                //
-                // //get points in original mesh
-                // Eigen::Vector3d ogp1 = Verts.row(VertsMap(f_idx,0));
-                // Eigen::Vector3d ogp2 = Verts.row(VertsMap(f_idx,1));
-                // Eigen::Vector3d ogp3 = Verts.row(VertsMap(f_idx,2));
-                // Eigen::Vector3d ogp4 = Verts.row(VertsMap(f_idx,3));
-                //
-                // Eigen::Vector3d oa = ogp2 - ogp1;
-                // Eigen::Vector3d ob = ogp3 - ogp1;
-                // Eigen::Vector3d oc = ogp4 - ogp1;
-                //
-                // Eigen::Matrix3d v1;
-                // v1 << oa, ob, oc;
-                //
-                // Eigen::Matrix3<T> v2;
-                // v2 << a, b, c;
-                //
-                // Eigen::Matrix3<T> S = v1 * v2.transpose();
+                Eigen::Vector3<T> point1 = getPoint<T>(vec0,vec1,vec2);
+                Eigen::Vector3<T> point2 = getPoint(vec0,vec1,vec3);
+                Eigen::Vector3<T> point3 = getPoint(vec1,vec2,vec4);
+                Eigen::Vector3<T> point4 = getPoint(vec0,vec2,vec5);
+
+                Eigen::Vector3<T> a = point2 - point1;
+                Eigen::Vector3<T> b = point3 - point1;
+                Eigen::Vector3<T> c = point4 - point1;
+
+                //get points in original mesh
+                Eigen::Vector3d ogp1 = Verts.row(VertsMap(f_idx,0));
+                Eigen::Vector3d ogp2 = Verts.row(VertsMap(f_idx,1));
+                Eigen::Vector3d ogp3 = Verts.row(VertsMap(f_idx,2));
+                Eigen::Vector3d ogp4 = Verts.row(VertsMap(f_idx,3));
+
+                Eigen::Vector3d oa = ogp2 - ogp1;
+                Eigen::Vector3d ob = ogp3 - ogp1;
+                Eigen::Vector3d oc = ogp4 - ogp1;
+
+                Eigen::Matrix3d v1;
+                v1 << oa, ob, oc;
+
+                Eigen::Matrix3<T> v2;
+                v2 << a, b, c;
+
+                Eigen::Matrix3<T> S = v1 * v2.transpose();
+                //doesn't work?
+                //Eigen::JacobiSVD<Eigen::MatrixX<T>> svd(S, Eigen::ComputeThinU | Eigen::ComputeThinV);
+                // Eigen::MatrixX<T> U = svd.matrixU();
+                // Eigen::MatrixX<T> E = svd.singularValues().asDiagonal();
+                // Eigen::MatrixX<T> V = svd.matrixV();
 
 
                 return (T)INFINITY;
