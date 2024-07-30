@@ -55,11 +55,32 @@ double x = 0;
 double y = 0;
 double z = 0;
 
+
+template<class T>
+Eigen::Vector3<T> getPoint(Eigen::Vector4<T>& poly1, Eigen::Vector4<T>& poly2, Eigen::Vector4<T>& poly3) {
+    Eigen::Vector3<T> normal1 = poly1.head(3).normalized();
+    Eigen::Vector3<T> normal2 = poly2.head(3).normalized();
+    Eigen::Vector3<T> normal3 = poly3.head(3).normalized();
+
+    Eigen::Matrix3<T> m;
+    m.row(0) = normal1;
+    m.row(1) = normal2;
+    m.row(2) = normal3;
+
+    Eigen::Vector3<T> b;
+    b << poly1(3), poly2(3), poly3(3);
+
+    //Eigen::Vector3<T> x = m.colPivHouseholderQr().solve(b);
+    Eigen::Vector3<T> x = m.partialPivLu().solve(b);
+    //Eigen::Vector3<T> x = normal1 * poly1(3) + normal2 * poly2(3) + normal3 * poly3(3);
+    return x;
+
+
+}
+
 void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &poly) {
     using namespace Eigen;
     viewer.data().clear_points();
-
-    std::map<int, std::vector<int> > face_vert_map;
     int v = 0;
     Vf.resize(F.rows(), 3);
     // for (int i = 0; i < 6; i++) {
@@ -67,60 +88,16 @@ void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &po
     // }
     for (int i = 0; i < F.rows(); i++) {
         auto row = F.row(i);
-        Vector3d vert1 = poly.row(row(0))(seq(0,2)).transpose();
-        Vector3d vert2 = poly.row(row(1))(seq(0,2)).transpose();
-        Vector3d vert3 =  poly.row(row(2))(seq(0,2)).transpose();
-
-        for (int j = 0; j < 3; j++) {
-            if (face_vert_map.find(row(j)) != face_vert_map.end()) {
-                face_vert_map[row[j]].push_back(i);
-            } else {
-                std::vector<int> vec;
-                vec.push_back(i);
-                face_vert_map[row[j]] = vec;
-            }
-        }
-
-        Eigen::Matrix3d m;
-        m.row(0) = vert1;
-        m.row(1) = vert2;
-        m.row(2) = vert3;
-
-        Eigen::Vector3d b;
-
-
-        //b << points.row(row(0)) * vert1, points.row(row(1)) * vert2, points.row(row(2)) * vert3;
-        b << poly(row(0), 3), poly(row(1), 3), poly(row(2), 3);
-
-
-        Eigen::Vector3d x = m.colPivHouseholderQr().solve(b);
-
-
-        Vf.row(v) = x;
+        Eigen::Vector4d p1 = poly.row(row(0));
+        Eigen::Vector4d p2 = poly.row(row(1));
+        Eigen::Vector4d p3 = poly.row(row(2));
+        Vf.row(v) = getPoint<double>(p1,p2,p3);
         v++;
     }
     viewer.data().set_mesh(Vf, Ff);
 }
 
-template<class T>
-Eigen::Vector3<T> getPoint(Eigen::Vector4<T> poly1, Eigen::Vector4<T> poly2, Eigen::Vector4<T> poly3) {
-    Eigen::Vector3<T> normal1 = poly1.template head<3>();
-    Eigen::Vector3<T> normal2 = poly2.template head<3>();
-    Eigen::Vector3<T> normal3 = poly3.template head<3>();
 
-    Eigen::Matrix3<T> m;
-    m.row(0) = normal1;
-    m.row(1) = normal2;
-    m.row(2) = normal3;
-    //
-    Eigen::Vector3<T> b;
-    b << poly1(3), poly2(3), poly3(3);
-    //
-    Eigen::Vector3<T> x = m.partialPivLu().solve(b);
-    return x;
-
-
-}
 
 
 
@@ -183,13 +160,12 @@ int main(int argc, char *argv[]) {
                         }
                         if(c>=2) {
                             Groups(i,j+3) = r;
-                            VertsMap(i,j) = k;
+                            VertsMap(i,j + 1) = k;
                         }
                     }
 
                 }
             }
-            std::cout << Groups << std::endl;
 
 
             // Set up function with 3D vertex positions as variables.
@@ -199,7 +175,6 @@ int main(int argc, char *argv[]) {
             func.add_elements<6>(TinyAD::range(F.rows()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
                 //calculate arap energy
                 using T = TINYAD_SCALAR_TYPE(element);
-                std::cout << typeid(T).name() << std::endl;
 
                 Eigen::Index f_idx = element.handle;
                 Eigen::Vector4<T> vec0 = element.variables(Groups(f_idx,0));
@@ -215,34 +190,55 @@ int main(int argc, char *argv[]) {
                 Eigen::Vector3<T> point3 = getPoint(vec1,vec2,vec4);
                 Eigen::Vector3<T> point4 = getPoint(vec0,vec2,vec5);
 
-                Eigen::Vector3<T> a = point2 - point1;
-                Eigen::Vector3<T> b = point3 - point1;
-                Eigen::Vector3<T> c = point4 - point1;
+                 Eigen::Vector3<T> a = point2 - point1;
+                 Eigen::Vector3<T> b = point3 - point1;
+                 Eigen::Vector3<T> c = point4 - point1;
 
-                //get points in original mesh
-                Eigen::Vector3d ogp1 = Verts.row(VertsMap(f_idx,0));
-                Eigen::Vector3d ogp2 = Verts.row(VertsMap(f_idx,1));
-                Eigen::Vector3d ogp3 = Verts.row(VertsMap(f_idx,2));
-                Eigen::Vector3d ogp4 = Verts.row(VertsMap(f_idx,3));
+                 //get points in original mesh
+                 Eigen::Vector3d ogp1 = Verts.row(VertsMap(f_idx,0));
+                 Eigen::Vector3d ogp2 = Verts.row(VertsMap(f_idx,1));
+                 Eigen::Vector3d ogp3 = Verts.row(VertsMap(f_idx,2));
+                 Eigen::Vector3d ogp4 = Verts.row(VertsMap(f_idx,3));
 
-                Eigen::Vector3d oa = ogp2 - ogp1;
-                Eigen::Vector3d ob = ogp3 - ogp1;
-                Eigen::Vector3d oc = ogp4 - ogp1;
+                 Eigen::Vector3d oa = ogp2 - ogp1;
+                 Eigen::Vector3d ob = ogp3 - ogp1;
+                 Eigen::Vector3d oc = ogp4 - ogp1;
 
-                Eigen::Matrix3d v1;
-                v1 << oa, ob, oc;
+                 Eigen::Matrix3d v1;
+                 v1 << oa, ob, oc;
 
-                Eigen::Matrix3<T> v2;
-                v2 << a, b, c;
+                 Eigen::Matrix3<T> v2;
+                 v2 << a, b, c;
 
-                Eigen::Matrix3<T> S = v1 * v2.transpose();
-                //doesn't work?
-                //Eigen::JacobiSVD<Eigen::MatrixX<T>> svd(S, Eigen::ComputeThinU | Eigen::ComputeThinV);
-                // Eigen::MatrixX<T> U = svd.matrixU();
-                // Eigen::MatrixX<T> E = svd.singularValues().asDiagonal();
-                // Eigen::MatrixX<T> V = svd.matrixV();
+                 Eigen::Matrix3<T> S = v1 * v2.transpose();
+                 Eigen::JacobiSVD<Eigen::Matrix3<T>> svd(S, Eigen::ComputeFullV | Eigen::ComputeFullU);
+                 Eigen::Matrix3<T> U = svd.matrixU();
+                 Eigen::Matrix3<T> E = svd.singularValues().asDiagonal();
+                 Eigen::Matrix3<T> V = svd.matrixV();
+
+                 Eigen::Matrix3<T> Rot = U * V.transpose();
+
+                 Eigen::Vector3<T> ra = Rot * a;
+                //T returnValue = pow((oa - ra).norm(),2);
+                T returnValue = 0;
+
+                // if(f_idx == 0) {
+                //     Eigen::Vector3<T> targetPos;
+                //     targetPos << 3, 6, 3;
+                //     returnValue += pow(0.1 - (point1).norm(),2);
+                // }
+                // if(f_idx == 4) {
+                // //     Eigen::Vector3<T> targetPos;
+                // //     targetPos << -3, -3, -3;
+                //     returnValue += pow(0.1 - (point1).norm(),2);
+                // }
+
+                return returnValue;
 
 
+                //return pow(0.1 - vec0(3),2);
+                //return pow(0.1 - (normal1 * vec0(3)).norm(),2);
+                //return pow(0.1 - point1.norm(), 2);
                 return (T)INFINITY;
             });
 
@@ -254,8 +250,9 @@ int main(int argc, char *argv[]) {
                 return Polygons.row(v_idx);
             });
             // Projected Newton
+
             TinyAD::LinearSolver solver;
-            int max_iters = 2;
+            int max_iters = 100;
             double convergence_eps = 1e-2;
             for (int i = 0; i < max_iters; ++i) {
                 auto [f, g, H_proj] = func.eval_with_hessian_proj(x);
@@ -264,8 +261,8 @@ int main(int argc, char *argv[]) {
                 if (TinyAD::newton_decrement(d, g) < convergence_eps)
                     break;
                 x = TinyAD::line_search(x, d, f, g, func);
+
                 func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
-                    std::cout << "test" << std::endl;
                     Polygons.row(v_idx) = p;
                     // V.row(v_idx) = p(seq(0, 2));
                     // Normals.row(v_idx) = p(seq(3, 5));
