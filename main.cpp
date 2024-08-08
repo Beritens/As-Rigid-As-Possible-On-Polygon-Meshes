@@ -39,12 +39,14 @@ const Eigen::RowVector3d sea_green(70. / 255., 252. / 255., 167. / 255.);
 Eigen::MatrixXd Polygons;
 Eigen::MatrixXd originalPolygons;
 Eigen::MatrixXd rotations;
-Eigen::MatrixXi F;
+Eigen::MatrixXi connections;
 Eigen::MatrixXi Groups;
 Eigen::MatrixXi VertsMap;
 Eigen::MatrixXd Verts;
 Eigen::MatrixXd Vf;
 Eigen::MatrixXi Ff;
+Eigen::MatrixXd V;
+Eigen::MatrixXi F;
 Eigen::VectorXi S, b;
 Eigen::RowVector3d mid;
 double anim_t = 0.0;
@@ -82,22 +84,70 @@ void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &po
     using namespace Eigen;
     viewer.data().clear_points();
     int v = 0;
-    Vf.resize(F.rows(), 3);
+    Vf.resize(connections.rows(), 3);
     // for (int i = 0; i < 6; i++) {
     //     viewer.data().add_points(points.row(i), Eigen::RowVector3d(1, 0, 0));
     // }
-    for (int i = 0; i < F.rows(); i++) {
-        auto row = F.row(i);
+    for (int i = 0; i < connections.rows(); i++) {
+        auto row = connections.row(i);
         Eigen::Vector4d p1 = poly.row(row(0));
         Eigen::Vector4d p2 = poly.row(row(1));
         Eigen::Vector4d p3 = poly.row(row(2));
         Vf.row(v) = getPoint<double>(p1,p2,p3);
         v++;
     }
-    viewer.data().set_mesh(Vf, Ff);
+    viewer.data().set_mesh(Vf, F);
+}
+
+void calculateFaceMatrixAndPolygons(Eigen::MatrixXi polyF, int face) {
+        for(int j = 1; j< polyF.row(face).size()-1; j++) {
+
+            F.conservativeResize(F.rows() +1,3);
+            F(F.rows() - 1, 0) = polyF(face, 0);
+            F(F.rows() - 1, 1) = polyF(face, j);
+            F(F.rows() - 1, 2) = polyF(face, (j+1) % polyF.row(face).size());
+        }
+        Polygons.conservativeResize(Polygons.rows() +1, 4);
+        Eigen::Vector3d pointa =V.row(polyF(face,0));
+        Eigen::Vector3d pointb =V.row(polyF(face,1));
+        Eigen::Vector3d pointc =V.row(polyF(face,2));
+        Eigen::Vector3d a = pointb - pointa;
+        Eigen::Vector3d b = pointc - pointa;
+        Eigen::Vector3d normal = a.cross(b).normalized();
+        double dist = pointa.dot(normal);
+        Eigen::Vector4d polygon;
+        polygon << normal, dist;
+        std::cout << face << std::endl;
+        Polygons.row(Polygons.rows()-1) = polygon;
+}
+
+void setConnectivityForOneVertex(Eigen::MatrixXi polyF, int v) {
+    connections.conservativeResize(connections.rows()+1, 3);
+    int count = 0;
+    for(int i = 0; i< polyF.rows(); i++) {
+       if(count >= 3) {
+           return;
+       }
+       for(int j = 0; j < polyF.row(i).size(); j++) {
+           if(polyF(i,j) == v) {
+               connections(connections.rows()-1, count) = i;
+               count++;
+               break;
+           }
+       }
+    }
 }
 
 
+void precomputeMesh(Eigen::MatrixXi polyF) {
+
+    for(int i = 0; i< polyF.rows(); i++) {
+        calculateFaceMatrixAndPolygons(polyF, i);
+    }
+    for(int i = 0; i< V.rows(); i++) {
+        setConnectivityForOneVertex(polyF,i);
+    }
+}
 
 
 
@@ -108,12 +158,17 @@ int main(int argc, char *argv[]) {
     //U = V;
     //igl::readDMAT("../cube-selection.dmat", S);
     //igl::readDMAT("../cube-normals.dmat", Normals);
-    igl::readDMAT("../cube-planes.dmat", Polygons);
+    //igl::readDMAT("../cube-planes.dmat", Polygons);
+
+    //igl::readDMAT("../cube-connectivity.dmat", connections);
+
+    //igl::readOFF("../plane-cube.off", Vf, Ff);
+    Eigen::MatrixXi polyF;
+    igl::readOFF("../Dodecahedron.off", V, polyF);
+    precomputeMesh(polyF);
 
     originalPolygons = Polygons;
-    igl::readDMAT("../cube-connectivity.dmat", F);
-
-    igl::readOFF("../plane-cube.off", Vf, Ff);
+    std::cout << Polygons << std::endl;
     //std::cout << Normals << std::endl;
 
 
@@ -125,36 +180,40 @@ int main(int argc, char *argv[]) {
     std::thread optimization_thread(
         [&]() {
 
-            Groups.resize(F.rows(), 6);
-            VertsMap.resize(F.rows(), 4);
-            Verts.resize(F.rows(),3);
+            Groups.resize(connections.rows(), 6);
+            Eigen::MatrixXd GroupCotanWeights;
+
+            VertsMap.resize(connections.rows(), 4);
+            Verts.resize(connections.rows(),3);
             // Pre-compute stuff
-            for(int i = 0; i < F.rows(); i++) {
+            GroupCotanWeights.resize(connections.rows(), 3);
+
+            for(int i = 0; i < connections.rows(); i++) {
                 VertsMap(i,0) = i;
 
-                Vector4d poly1 = Polygons.row(F(i,0));
-                Vector4d poly2 = Polygons.row(F(i,1));
-                Vector4d poly3 = Polygons.row(F(i,2));
+                Vector4d poly1 = Polygons.row(connections(i,0));
+                Vector4d poly2 = Polygons.row(connections(i,1));
+                Vector4d poly3 = Polygons.row(connections(i,2));
 
                 Verts.row(i) = getPoint(poly1,poly2,poly3);
 
                 for(int j = 0; j< 3; j++) {
 
-                    Groups(i,j)= F(i,j);
+                    Groups(i,j)= connections(i,j);
                     int a = j;
                     int b = (j+1) % 3;
-                    for(int k = 0; k < F.rows(); k++) {
+                    for(int k = 0; k < connections.rows(); k++) {
                         if(k == i) {
                             continue;
                         }
                         int c = 0;
                         int r = -1;
                         for(int v = 0; v < 3; v++) {
-                            if(F(k,v) == F(i,a) || F(k,v) == F(i, b)) {
+                            if(connections(k,v) == connections(i,a) || connections(k,v) == connections(i, b)) {
                                 c++;
                             }
                             else {
-                                r = F(k,v);
+                                r = connections(k,v);
                             }
 
                         }
@@ -172,7 +231,7 @@ int main(int argc, char *argv[]) {
             auto func = TinyAD::scalar_function<4>(TinyAD::range(Polygons.rows()));
 
             // Add objective term per face. Each connecting 3 vertices.
-            func.add_elements<6>(TinyAD::range(F.rows()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
+            func.add_elements<6>(TinyAD::range(connections.rows()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
                 //calculate arap energy
                 using T = TINYAD_SCALAR_TYPE(element);
 
@@ -227,18 +286,24 @@ int main(int argc, char *argv[]) {
                 //     targetPos << 3, 6, 3;
                 //     returnValue += pow(0.1 - (point1).norm(),2);
                 // }
-                // if(f_idx == 4) {
-                // //     Eigen::Vector3<T> targetPos;
-                // //     targetPos << -3, -3, -3;
-                //     returnValue += pow(0.1 - (point1).norm(),2);
-                // }
+                //if(f_idx == 4) {
+                //     Eigen::Vector3<T> targetPos;
+                //     targetPos << -3, -3, -3;
+                //    returnValue += pow(0.1 - (point1).norm(),2);
+                //}
 
-                return returnValue;
+                //return returnValue;
 
 
-                //return pow(0.1 - vec0(3),2);
+                //return pow(0.2 - vec0(3),2);
                 //return pow(0.1 - (normal1 * vec0(3)).norm(),2);
-                //return pow(0.1 - point1.norm(), 2);
+                //return pow(2.0 - point1.norm(), 2);
+
+                if(f_idx == 0) {
+                    return pow(((5*ogp1) - point1).norm(),2);
+                }
+                return pow(((1*ogp1) - point1).norm(),2);
+
                 return (T)INFINITY;
             });
 
@@ -254,10 +319,12 @@ int main(int argc, char *argv[]) {
             TinyAD::LinearSolver solver;
             int max_iters = 100;
             double convergence_eps = 1e-2;
+            Eigen::ConjugateGradient<Eigen::SparseMatrix<double>> cg_solver;
             for (int i = 0; i < max_iters; ++i) {
                 auto [f, g, H_proj] = func.eval_with_hessian_proj(x);
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
-                Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver);
+                Eigen::VectorXd d = cg_solver.compute(H_proj + 1e-4 * TinyAD::identity<double>(x.size())).solve(-g);
+                //Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver);
                 if (TinyAD::newton_decrement(d, g) < convergence_eps)
                     break;
                 x = TinyAD::line_search(x, d, f, g, func);
@@ -273,6 +340,7 @@ int main(int argc, char *argv[]) {
                 }
             }
             TINYAD_DEBUG_OUT("Final energy: " << func.eval(x));
+            std::cout << Polygons << std::endl;
 
             // Write final x vector to P matrix.
             // x_to_data(...) takes a lambda function that writes the final value
