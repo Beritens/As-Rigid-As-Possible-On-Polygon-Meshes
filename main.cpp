@@ -149,6 +149,10 @@ void precomputeMesh(Eigen::MatrixXi polyF) {
     }
 }
 
+double getAngle(Eigen::Vector3d a, Eigen::Vector3d b) {
+    return a.dot(b)/ (a.norm() * b.norm());
+
+}
 
 
 int main(int argc, char *argv[]) {
@@ -181,12 +185,12 @@ int main(int argc, char *argv[]) {
         [&]() {
 
             Groups.resize(connections.rows(), 6);
-            Eigen::MatrixXd GroupCotanWeights;
+            Eigen::MatrixXd cotanWeights;
 
             VertsMap.resize(connections.rows(), 4);
             Verts.resize(connections.rows(),3);
             // Pre-compute stuff
-            GroupCotanWeights.resize(connections.rows(), 3);
+            cotanWeights.resize(V.rows(), V.rows());
 
             for(int i = 0; i < connections.rows(); i++) {
                 VertsMap(i,0) = i;
@@ -224,6 +228,25 @@ int main(int argc, char *argv[]) {
                     }
 
                 }
+
+                for(int j = 0; j< 3; j++) {
+                   //calculate cotan weight
+
+                    Vector3d origin = V.row(VertsMap(i,0 ));
+
+                    Vector3d a = V.row(VertsMap(i,(j+0)%3 +1 ));
+                    Vector3d b = V.row(VertsMap(i,(j+1)%3 +1 ));
+                    Vector3d c = V.row(VertsMap(i,(j+2)%3 +1 ));
+
+                    double angle1 = getAngle(origin-b, a-b);
+                    double angle2 = getAngle(origin-c, a-c);
+
+                    double weight = 1.0/tan(angle1) + 1.0/tan(angle2);
+
+                    cotanWeights(i, VertsMap(i,j + 1))= weight;
+
+                }
+
             }
 
 
@@ -278,7 +301,9 @@ int main(int argc, char *argv[]) {
                  Eigen::Matrix3<T> Rot = U * V.transpose();
 
                  Eigen::Vector3<T> ra = Rot * a;
-                //T returnValue = pow((oa - ra).norm(),2);
+                //T returnValue = pow(cotanWeights(VertsMap(f_idx,0),VertsMap(f_idx,1)) * (oa - ra).norm(),2);
+                //returnvalue += pow(cotanWeights(VertsMap(f_idx,0),VertsMap(f_idx,2)) * (ob - rb).norm(),2);
+                //returnvalue += pow(cotanWeights(VertsMap(f_idx,0),VertsMap(f_idx,3)) * (oc - rc).norm(),2);
                 T returnValue = 0;
 
                 // if(f_idx == 0) {
@@ -302,7 +327,7 @@ int main(int argc, char *argv[]) {
                 if(f_idx == 0) {
                     return pow(((5*ogp1) - point1).norm(),2);
                 }
-                return pow(((1*ogp1) - point1).norm(),2);
+                return pow(((1.01*ogp1) - point1).norm(),2);
 
                 return (T)INFINITY;
             });
