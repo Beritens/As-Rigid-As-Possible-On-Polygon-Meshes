@@ -314,6 +314,8 @@ int main(int argc, char *argv[]) {
                 Eigen::Matrix3<T> v2;
                 v2 << a, b, c;
 
+                Eigen::Matrix3<double> Rot2 = getRotation<double>(v1, v1);
+               //RealSvd2x2 caused problem (d was 0 but wasn't catched?) if (abs(d) < (std::numeric_limits<RealScalar>::min)() || d == 0) {
                 Eigen::Matrix3<T> Rot = getRotation<T>(v2, v2);
 
                 //return 0;
