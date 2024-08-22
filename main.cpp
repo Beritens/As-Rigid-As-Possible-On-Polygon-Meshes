@@ -268,9 +268,9 @@ int main(int argc, char *argv[]) {
                     0, 0, 0.5;
 
             Eigen::Matrix3d isoScaleMatrix;
-            isoScaleMatrix << 2.5, 0, 0,
-                    0, 2.5, 0,
-                    0, 0, 2.5;
+            isoScaleMatrix << 3.4, 0, 0,
+                    0, 1.4, 0,
+                    0, 0, 2.4;
 
             // Set up function with 3D vertex positions as variables.
             auto func = TinyAD::scalar_function<4>(TinyAD::range(Polygons.rows()));
@@ -315,33 +315,33 @@ int main(int argc, char *argv[]) {
                 v2 << a, b, c;
 
                 Eigen::Matrix3<double> Rot2 = getRotation<double>(v1, v1);
-               //RealSvd2x2 caused problem (d was 0 but wasn't catched?) if (abs(d) < (std::numeric_limits<RealScalar>::min)() || d == 0) {
-                Eigen::Matrix3<T> Rot = getRotation<T>(v2, v2);
+                //RealSvd2x2 caused problem (d was 0 but wasn't catched?) if (abs(d) < (std::numeric_limits<RealScalar>::min)() || d == 0) {
+                Eigen::Matrix3<T> Rot = getRotation<T>(v1, v2);
 
                 //return 0;
 
 
-                //return pow(((scaleMatrix * ogp1) - point1).norm(), 2);
+                //return ((scaleMatrix * ogp1) - point1).squaredNorm();
 
                 T returnValue = 0;
                 //return returnValue;
 
                 if (f_idx == 5 || f_idx == 2) {
-                    returnValue = ((isoScaleMatrix * ogp1) - point1).squaredNorm();
-                    return returnValue;
+                    returnValue = 100 * ((isoScaleMatrix * ogp1) - point1).squaredNorm();
+                    //return returnValue;
                 }
-                return ((ogp1) - point1).squaredNorm();
+                //return ((ogp1) - point1).squaredNorm();
                 //
                 // //return (T) INFINITY;
                 //
                 //
-                // Eigen::Vector3<T> ra = Rot * a;
-                // Eigen::Vector3<T> rb = Rot * b;
-                // Eigen::Vector3<T> rc = Rot * c;
-                // returnValue += cotanWeights(VertsMap(f_idx, 0), VertsMap(f_idx, 1)) * (oa - ra).squaredNorm();
-                // returnValue += cotanWeights(VertsMap(f_idx, 0), VertsMap(f_idx, 2)) * (ob - rb).squaredNorm();
-                // returnValue += cotanWeights(VertsMap(f_idx, 0), VertsMap(f_idx, 3)) * (oc - rc).squaredNorm();
-                // return returnValue;
+                Eigen::Vector3<T> ra = Rot * a;
+                Eigen::Vector3<T> rb = Rot * b;
+                Eigen::Vector3<T> rc = Rot * c;
+                returnValue += cotanWeights(VertsMap(f_idx, 0), VertsMap(f_idx, 1)) * (oa - ra).squaredNorm();
+                returnValue += cotanWeights(VertsMap(f_idx, 0), VertsMap(f_idx, 2)) * (ob - rb).squaredNorm();
+                returnValue += cotanWeights(VertsMap(f_idx, 0), VertsMap(f_idx, 3)) * (oc - rc).squaredNorm();
+                return returnValue;
                 // T returnValue = 0;
             });
 
