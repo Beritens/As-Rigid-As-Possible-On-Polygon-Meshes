@@ -57,6 +57,64 @@ double x = 0;
 double y = 0;
 double z = 0;
 
+namespace std {
+    template <>
+    struct numeric_limits<TinyAD::Scalar<24, double, true>> {
+        static constexpr bool is_specialized = true;
+
+        static TinyAD::Scalar<24, double, true> min() noexcept {
+            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::min()};
+        }
+
+        static TinyAD::Scalar<24, double, true> max() noexcept {
+            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::max()};
+        }
+
+        static TinyAD::Scalar<24, double, true> lowest() noexcept {
+            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::lowest()};
+        }
+
+        static constexpr int digits = std::numeric_limits<double>::digits;
+        static constexpr int digits10 = std::numeric_limits<double>::digits10;
+        static constexpr int max_digits10 = std::numeric_limits<double>::max_digits10;
+
+        static constexpr bool is_signed = std::numeric_limits<double>::is_signed;
+        static constexpr bool is_integer = false;
+        static constexpr bool is_exact = false;
+
+        static constexpr bool has_infinity = std::numeric_limits<double>::has_infinity;
+        static constexpr bool has_quiet_NaN = std::numeric_limits<double>::has_quiet_NaN;
+        static constexpr bool has_signaling_NaN = std::numeric_limits<double>::has_signaling_NaN;
+        static constexpr float_denorm_style has_denorm = std::numeric_limits<double>::has_denorm;
+        static constexpr bool has_denorm_loss = std::numeric_limits<double>::has_denorm_loss;
+
+        static TinyAD::Scalar<24, double, true> infinity() noexcept {
+            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::infinity()};
+        }
+
+        static TinyAD::Scalar<24, double, true> quiet_NaN() noexcept {
+            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::quiet_NaN()};
+        }
+
+        static TinyAD::Scalar<24, double, true> signaling_NaN() noexcept {
+            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::signaling_NaN()};
+        }
+
+        static TinyAD::Scalar<24, double, true> denorm_min() noexcept {
+            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::denorm_min()};
+        }
+
+        static constexpr bool is_iec559 = std::numeric_limits<double>::is_iec559;
+        static constexpr bool is_bounded = std::numeric_limits<double>::is_bounded;
+        static constexpr bool is_modulo = std::numeric_limits<double>::is_modulo;
+
+        static constexpr bool traps = std::numeric_limits<double>::traps;
+        static constexpr bool tinyness_before = std::numeric_limits<double>::tinyness_before;
+        static constexpr float_round_style round_style = std::numeric_limits<double>::round_style;
+    };
+}
+
+
 
 template<class T>
 Eigen::Vector3<T> getPoint(Eigen::Vector4<T> &poly1, Eigen::Vector4<T> &poly2, Eigen::Vector4<T> &poly3) {
@@ -264,7 +322,7 @@ int main(int argc, char *argv[]) {
             //test stuff
             Eigen::Matrix3d scaleMatrix;
             scaleMatrix << 1.5, 0, 0,
-                    0, 2, 0,
+                    0, 3, 0,
                     0, 0, 0.5;
 
             Eigen::Matrix3d isoScaleMatrix;
