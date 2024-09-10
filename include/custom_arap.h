@@ -10,9 +10,10 @@
 
 #include <igl/arap.h>
 
+#include "custom_data.h"
 
 
-  /// Parameters and precomputed values for custom arap solver.
+/// Parameters and precomputed values for custom arap solver.
   ///
   /// \fileinfo
 
@@ -36,7 +37,9 @@
       const Eigen::MatrixXi& F,
       int dim,
       const Eigen::VectorXi& b,
-      igl::ARAPData& data);
+      igl::ARAPData& data,
+      custom_data& custom_data,
+      const Eigen::MatrixXd& Polygons);
   /// Conduct arap solve.
   ///
   /// @param[in] bc  #b by dim list of boundary conditions
@@ -56,8 +59,10 @@
   bool custom_arap_solve(
       const Eigen::MatrixXd& bc,
       igl::ARAPData& data,
+      custom_data& custom_data,
       Eigen::MatrixXd& U,
-      Eigen::MatrixXd & rotations);
+      Eigen::MatrixXd & rotations,
+      Eigen::MatrixXd& Polygons);
 
 
 #endif //CUSTOM_ARAP_H

@@ -24,6 +24,7 @@
 #include <TinyAD/ScalarFunction.hh>
 
 #include "custom_arap.h"
+#include "happly.h"
 #include "TinyAD/Utils/LinearSolver.hh"
 #include "TinyAD/Utils/LineSearch.hh"
 #include "TinyAD/Utils/NewtonDecrement.hh"
@@ -54,17 +55,18 @@ Eigen::RowVector3d mid;
 double anim_t = 0.0;
 double anim_t_dir = 0.03;
 igl::ARAPData arap_data;
+custom_data custom_data;
 
     //0.947214,   0.58541,         0,
     //0.8090169943749473, -0.8090169943749473, 0.8090169943749473;
-double x = 0.8090169943749473;
-double y = -0.8090169943749473;
-double z = 0.8090169943749473;
+// double x = 0.8090169943749473;
+// double y = -0.8090169943749473;
+// double z = 0.8090169943749473;
 //
-// double x = 0.94;
-// double y =  0.58;
-// double z = 0;
-bool autodiff = true;
+double x = 0;
+double y =  0;
+double z = 0;
+bool autodiff = false;
 
 namespace std {
     template <>
@@ -185,12 +187,22 @@ void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &po
     viewer.data().set_mesh(Vf, F);
 }
 
+int faceSize(Eigen::VectorXi face) { int count = 0;
+    for (int i = 0; i < face.size(); ++i) {
+        if (face(i) != -1) {
+            count++;
+        }
+    }
+    return count;
+}
+
 void calculateFaceMatrixAndPolygons(Eigen::MatrixXi polyF, int face) {
-    for (int j = 1; j < polyF.row(face).size() - 1; j++) {
+    int size = faceSize(polyF.row(face));
+    for (int j = 1; j < size - 1; j++) {
         F.conservativeResize(F.rows() + 1, 3);
         F(F.rows() - 1, 0) = polyF(face, 0);
         F(F.rows() - 1, 1) = polyF(face, j);
-        F(F.rows() - 1, 2) = polyF(face, (j + 1) % polyF.row(face).size());
+        F(F.rows() - 1, 2) = polyF(face, (j + 1) % size);
     }
     Polygons.conservativeResize(Polygons.rows() + 1, 4);
     Eigen::Vector3d pointa = V.row(polyF(face, 0));
@@ -209,9 +221,10 @@ void calculateFaceMatrixAndPolygons(Eigen::MatrixXi polyF, int face) {
 void calculateFaceCenters(Eigen::MatrixXi polyF, int face) {
     centers.conservativeResize(centers.rows() + 1, 3);
     Eigen::Vector3d center;
-    for (int j = 0; j < polyF.row(face).size(); j++) {
+    int size = faceSize(polyF.row(face));
+    for (int j = 0; j < size; j++) {
         Eigen::Vector3d p = V.row(polyF(face,j));
-        center += p * (1.0 / (polyF.row(face).size() * 1.0));
+        center += p * (1.0 / (size * 1.0));
     }
     centers.row(face) = center;
 }
@@ -264,7 +277,36 @@ int main(int argc, char *argv[]) {
 
     //igl::readOFF("../plane-cube.off", Vf, Ff);
     Eigen::MatrixXi polyF;
-    igl::readOFF("../Dodecahedron.off", V, polyF);
+
+    //igl::readOFF("../Dodecahedron.off", V, polyF);
+
+    happly::PLYData plyIn("../complex.ply");
+    std::vector<std::array<double, 3>> vPos = plyIn.getVertexPositions();
+    std::vector<std::vector<size_t>> fInd = plyIn.getFaceIndices<size_t>();
+    V.conservativeResize(vPos.size(),3);
+    for(int i = 0; i < vPos.size(); i++) {
+        V(i,0) = vPos[i][0];
+        V(i,1) = vPos[i][1];
+        V(i,2) = vPos[i][2];
+    }
+
+    int Fcols = 0;
+    for(int i = 0; i < fInd.size(); i++) {
+        if(fInd[i].size() > Fcols) {
+            Fcols = fInd[i].size();
+        }
+    }
+
+    polyF.conservativeResize(fInd.size(),Fcols);
+    for(int i = 0; i < fInd.size(); i++) {
+        for(int j = 0; j< Fcols; j++) {
+            if(fInd[i].size() > j) {
+                polyF(i,j) = fInd[i][j];
+            } else {
+                polyF(i,j) = -1;
+            }
+        }
+    }
     precomputeMesh(polyF);
 
     originalPolygons = Polygons;
@@ -281,14 +323,21 @@ int main(int argc, char *argv[]) {
     std::cout << rotationTest << std::endl;
 
 
-    Eigen::VectorXi conP(2); conP << 5,2;
-    Eigen::MatrixXd constraints(2,3); constraints <<
-    -0.8090169943749473, 0.8090169943749473, -0.8090169943749473,
-    0.8090169943749473, -0.8090169943749473, 0.8090169943749473;
-    // Eigen::VectorXi conP(2); conP << 0,3;
-    // Eigen::MatrixXd constraints(2,3); constraints <<
-    // 0.947214,   0.58541,         0,
-    //     0,  0.947214,  -0.58541;
+    Eigen::VectorXi conP(2); conP << 0, 22;
+    Eigen::MatrixXd lagrangeMultipliers = Eigen::MatrixXd::Zero(conP.size(),4);
+    Eigen::MatrixXd constraints(conP.size(),3);
+    for(int i = 0; i < conP.size(); i++) {
+        if(autodiff) {
+            constraints.row(i) = V.row(conP(i));
+
+        }
+        else {
+            constraints.row(i) = centers.row(conP(i));
+        }
+    }
+    x = constraints(1,0);
+    y = constraints(1,1);
+    z = constraints(1,2);
 
     bool redraw = false;
     std::mutex m;
@@ -311,8 +360,8 @@ int main(int argc, char *argv[]) {
             }
 
             igl::ARAPData arap_data;
-            arap_data.max_iter = 10;
-            custom_arap_precomputation(centers,connections, centers.cols(), b, arap_data);
+            arap_data.max_iter = 1;
+            custom_arap_precomputation(centers,connections, centers.cols(), b, arap_data, custom_data, Polygons);
 
 
             for (int i = 0; i < connections.rows(); i++) {
@@ -380,18 +429,20 @@ int main(int argc, char *argv[]) {
             //         0, 0, 2.4;
 
             // Set up function with 3D vertex positions as variables.
-            auto func = TinyAD::scalar_function<4>(TinyAD::range(Polygons.rows()));
+            auto func = TinyAD::scalar_function<4>(TinyAD::range(Polygons.rows() + conP.size()));
 
-            func.add_elements<3>(TinyAD::range(conP.rows()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
+            func.add_elements<4>(TinyAD::range(conP.rows()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
 
                 using T = TINYAD_SCALAR_TYPE(element);
-                Eigen::Index f_idx = element.handle;Eigen::Vector4<T> vecs[3];
+                Eigen::Index f_idx = element.handle;
+                Eigen::Vector4<T> lagrangeM = element.variables(f_idx + Polygons.rows());
+                Eigen::Vector4<T> vecs[3];
                 for(int i = 0; i<3; i++) {
                     vecs[i] = element.variables(Groups(conP(f_idx), i));
                 }
                 Eigen::Vector3<T> point = getPoint<T>(vecs[0], vecs[1], vecs[2]);
                 Eigen::Vector3d target = constraints.row(f_idx);
-                return 100 * (target - point).squaredNorm();
+                return lagrangeM(0) * (target - point).squaredNorm();
 
             });
 
@@ -477,6 +528,9 @@ int main(int argc, char *argv[]) {
             // each variable handle (vertex index) to its initial 2D value (Eigen::Vector2d).
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
+                if(v_idx >= Polygons.rows()) {
+                    return lagrangeMultipliers.row(v_idx - Polygons.rows());
+                }
                 return Polygons.row(v_idx);
             });
             // Projected Newton
@@ -491,15 +545,19 @@ int main(int argc, char *argv[]) {
                 if(autodiff) {
                     auto [f, g, H_proj] = func.eval_with_hessian_proj(x);
                     TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
-                    Eigen::VectorXd d = cg_solver.compute(H_proj + 1e-4 * TinyAD::identity<double>(x.size())).solve(-g);
-                    //Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver);
+                    //Eigen::VectorXd d = cg_solver.compute(H_proj + 1e-4 * TinyAD::identity<double>(x.size())).solve(-g);
+                    Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver);
                     if (TinyAD::newton_decrement(d, g) < convergence_eps) {
                         //break;
                     }
                     x = TinyAD::line_search(x, d, f, g, func);
 
                     func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
-                        Polygons.row(v_idx) = p;
+                        if(v_idx >= Polygons.rows()) {
+                            lagrangeMultipliers.row(v_idx-Polygons.rows()) = p;
+                        } else {
+                            Polygons.row(v_idx) = p;
+                        }
                         // V.row(v_idx) = p(seq(0, 2));
                         // Normals.row(v_idx) = p(seq(3, 5));
                         //P.row(v_idx) = p;
@@ -518,7 +576,7 @@ int main(int argc, char *argv[]) {
                         }
                     }
 
-                    custom_arap_solve(bc, arap_data, U, rotations);
+                    custom_arap_solve(bc, arap_data, custom_data, U, rotations, Polygons);
                     for(int j = 0; j<centers.rows(); j++) {
                         //std::cout << rotations << std::endl;
                         Matrix3d rot = rotations.block<3, 3>(0, j * 3);
@@ -571,7 +629,12 @@ int main(int argc, char *argv[]) {
             draw_face_mesh(viewer, Polygons);
 
             Eigen::RowVector3d point(x,y,z);
-            viewer.data().add_points(point, Eigen::RowVector3d(1, 0, 0));
+            //viewer.data().add_points(point, Eigen::RowVector3d(1, 0, 0));
+
+            for(int i = 0; i< constraints.rows(); i++) {
+
+                viewer.data().add_points(constraints.row(i), Eigen::RowVector3d(1, 0, 0));
+            }
             //viewer.data().set_vertices(P);
             //viewer.core().align_camera_center(P);
             //viewer.core().camera_zoom = 2;

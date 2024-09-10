@@ -20,7 +20,9 @@ bool custom_arap_precomputation(
      const Eigen::MatrixXi& F,
      int dim,
      const Eigen::VectorXi& b,
-     igl::ARAPData& data)
+     igl::ARAPData& data,
+     custom_data& custom_data,
+     const Eigen::MatrixXd& Polygons)
 {
   using namespace std;
   using namespace Eigen;
@@ -147,6 +149,48 @@ bool custom_arap_precomputation(
     data.vel = MatrixXd::Zero(n,data.dim);
   }
 
+  for(int i = 0; i<F.rows(); i++) {
+    for(int j = 0; j<3; j++) {
+      int second = (j+1) % 3;
+      if(custom_data.sideVecs.count(F(i,j)) == 0) {
+        std::map<int, Eigen::Vector3d> m;
+        custom_data.sideVecs[F(i,j)] = m;
+      }
+      if(custom_data.sideVecs.count(F(i,second)) == 0) {
+
+        std::map<int, Eigen::Vector3d> m;
+        custom_data.sideVecs[F(i,j+1)] = m;
+      }
+
+      //find intersection point
+      int idx1 = F(i,j);
+      int idx2 = F(i,second);
+      Eigen::Vector3d n1 = Polygons.row(idx1).head(3);
+      Eigen::Vector3d n2 = Polygons.row(idx2).head(3);
+      Eigen::Matrix<double,5,5> M;
+
+      //https://math.stackexchange.com/questions/475953/how-to-calculate-the-intersection-of-two-planes
+      M << 2, 0, 0, n1(0), n2(0),
+      0, 2, 0, n1(1), n2(1),
+      0, 0, 2, n1(2), n2(2),
+      n1(0), n1(1), n1(2), 0, 0,
+      n2(0), n2(1), n2(2), 0, 0;
+
+      Eigen::Vector<double, 5> b_intersection;
+      b_intersection << 2 * V(idx1, 0), 2 * V(idx1, 1), 2 * V(idx1, 2), V.row(idx1).dot(n1), V.row(idx2).dot(n2);
+
+
+      Eigen::VectorXd x = M.partialPivLu().solve(b_intersection);
+      Eigen::Vector3d intersection_point = x.head(3);
+
+
+      custom_data.sideVecs[F(i,j)][F(i,second)] = intersection_point.transpose() - V.row(F(i,j));
+      custom_data.sideVecs[F(i,second)][F(i,j)] = intersection_point.transpose() - V.row(F(i,second));
+
+    }
+
+  }
+
   return min_quad_with_fixed_precompute(
     Q,b,SparseMatrix<double>(),true,data.solver_data);
 }
@@ -157,8 +201,10 @@ bool custom_arap_precomputation(
 bool custom_arap_solve(
     const Eigen::MatrixXd& bc,
     igl::ARAPData& data,
+    custom_data& custom_data,
     Eigen::MatrixXd& U,
-    Eigen::MatrixXd & rotations)
+    Eigen::MatrixXd& rotations,
+    Eigen::MatrixXd& Polygons)
 {
   using namespace Eigen;
   using namespace std;
@@ -190,10 +236,48 @@ bool custom_arap_solve(
     const auto & Udim = U.replicate(data.dim,1);
     assert(U.cols() == data.dim);
     // As if U.col(2) was 0
-    MatrixXd S = data.CSM * Udim;
+    // MatrixXd S = data.CSM * Udim;
+    MatrixXd S(data.n * data.dim, data.dim);
+    for(int i = 0; i< data.n; i++) {
+
+      int num = custom_data.sideVecs[i].size();
+      Eigen::MatrixXd V1(num,3);
+      Eigen::MatrixXd V2(num,3);
+      int j = 0;
+      for(auto it = custom_data.sideVecs[i].begin(); it != custom_data.sideVecs[i].end(); ++it) {
+        if(rotations.cols() > 0) {
+
+          Matrix3d rot1 = rotations.block<3, 3>(0, i * 3);
+          Matrix3d rot2 = rotations.block<3, 3>(0, it->first * 3);
+
+          //V1.row(j) = it->second + rot1.inverse()*(-rot2*custom_data.sideVecs[it->first][i]);
+          Eigen::Vector3d normal = Polygons.row(it->first).head(3);
+          Eigen::Vector3d b = custom_data.sideVecs[it->first][i];
+          double length = b.norm();
+          b = rot1 * b;
+          Eigen::Vector3d projected = normal * (normal.dot(b));
+          b = b - projected;
+
+          V1.row(j) = it->second;
+          V2.row(j) = (U.row(it->first)+ (b.normalized()*length).transpose()) - U.row(i);
+        } else {
+          V1.row(j) = it->second - custom_data.sideVecs[it->first][i];
+          V2.row(j) = U.row(it->first) - U.row(i);
+        }
+        j++;
+      }
+      Eigen::Matrix3d s = V1.transpose() * V2;
+      for(int x = 0; x < data.dim; x++ ) {
+        for(int y = 0; y < data.dim; y++ ) {
+
+          S(x * data.n + i, y) = s(x,y);
+        }
+      }
+    }
     // THIS NORMALIZATION IS IMPORTANT TO GET SINGLE PRECISION SVD CODE TO WORK
     // CORRECTLY.
     S /= S.array().abs().maxCoeff();
+
 
     const int Rdim = data.dim;
     MatrixXd R(Rdim,data.CSM.rows());
@@ -252,8 +336,35 @@ bool custom_arap_solve(
 
     VectorXd Rcol;
     igl::columnize(eff_R,num_rots,2,Rcol);
-    VectorXd Bcol = -data.K * Rcol;
+    //VectorXd Bcol = -data.K * Rcol;
+    VectorXd Bcol = VectorXd::Zero(data.n * data.dim);
     assert(Bcol.size() == data.n*data.dim);
+    for(int i = 0; i< data.n; i++) {
+
+      for(auto it = custom_data.sideVecs[i].begin(); it != custom_data.sideVecs[i].end(); ++it) {
+
+        Matrix3d rot1 = eff_R.block<3, 3>(0, i * 3);
+        Matrix3d rot2 = eff_R.block<3, 3>(0, it->first * 3);
+
+        Eigen::Vector3d a = rot1 * it->second;
+        Eigen::Vector3d b = rot2 * custom_data.sideVecs[it->first][i];
+        a = a-b;
+        a = a * 0.6;
+        // Eigen::Matrix3d CSM_block;
+        // for (int row = 0; row < 3; ++row) {
+        //     for (int col = 0; col < 3; ++col) {
+        //         CSM_block(row, col) = data.CSM.coeff(3 * i + row, 3 * it->first + col);
+        //     }
+        // }
+        // a = CSM_block * a;
+        Bcol(i) += a(0);
+        Bcol(i+n) += a(1);
+        Bcol(i+(2*n)) += a(2);
+      }
+    }
+    // std::cout << Bcol << std::endl;
+     // Bcol = -data.K * Rcol;
+    // std::cout << Bcol << std::endl;
     for(int c = 0;c<data.dim;c++)
     {
       VectorXd Uc,Bc,bcc,Beq;
