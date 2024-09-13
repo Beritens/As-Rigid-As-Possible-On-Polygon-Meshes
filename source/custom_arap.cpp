@@ -233,46 +233,56 @@ bool custom_arap_solve(
       U.row(data.b(bi)) = bc.row(bi);
     }
 
+    bool custom = true;
     const auto & Udim = U.replicate(data.dim,1);
     assert(U.cols() == data.dim);
-    // As if U.col(2) was 0
-    // MatrixXd S = data.CSM * Udim;
+
     MatrixXd S(data.n * data.dim, data.dim);
-    for(int i = 0; i< data.n; i++) {
+    // As if U.col(2) was 0
+    if(custom) {
+      for(int i = 0; i< data.n; i++) {
 
-      int num = custom_data.sideVecs[i].size();
-      Eigen::MatrixXd V1(num,3);
-      Eigen::MatrixXd V2(num,3);
-      int j = 0;
-      for(auto it = custom_data.sideVecs[i].begin(); it != custom_data.sideVecs[i].end(); ++it) {
-        if(rotations.cols() > 0) {
+        int num = custom_data.sideVecs[i].size();
+        Eigen::MatrixXd V1(num,3);
+        Eigen::MatrixXd V2(num,3);
+        int j = 0;
+        for(auto it = custom_data.sideVecs[i].begin(); it != custom_data.sideVecs[i].end(); ++it) {
+          if(rotations.cols() > 0) {
 
-          Matrix3d rot1 = rotations.block<3, 3>(0, i * 3);
-          Matrix3d rot2 = rotations.block<3, 3>(0, it->first * 3);
+            Matrix3d rot1 = rotations.block<3, 3>(0, i * 3);
+            Matrix3d rot2 = rotations.block<3, 3>(0, it->first * 3);
 
-          //V1.row(j) = it->second + rot1.inverse()*(-rot2*custom_data.sideVecs[it->first][i]);
-          Eigen::Vector3d normal = Polygons.row(it->first).head(3);
-          Eigen::Vector3d b = custom_data.sideVecs[it->first][i];
-          double length = b.norm();
-          b = rot1 * b;
-          Eigen::Vector3d projected = normal * (normal.dot(b));
-          b = b - projected;
+            //V1.row(j) = it->second + rot1.inverse()*(-rot2*custom_data.sideVecs[it->first][i]);
+            // Eigen::Vector3d normal = rot2 * Polygons.row(it->first).head(3).transpose();
+            // Eigen::Vector3d b = custom_data.sideVecs[it->first][i];
+            // double length = b.norm();
+            // b = rot1 * b;
+            // Eigen::Vector3d projected = normal * (normal.dot(b));
+            // b = b - projected;
+            // b = b.normalized()*length;
+            Eigen::Vector3d b = custom_data.sideVecs[it->first][i];
+            b = rot2 * b;
 
-          V1.row(j) = it->second;
-          V2.row(j) = (U.row(it->first)+ (b.normalized()*length).transpose()) - U.row(i);
-        } else {
-          V1.row(j) = it->second - custom_data.sideVecs[it->first][i];
-          V2.row(j) = U.row(it->first) - U.row(i);
+            V1.row(j) = it->second;
+            V2.row(j) = (U.row(it->first)+ b.transpose()) - U.row(i);
+          } else {
+            V1.row(j) = it->second - custom_data.sideVecs[it->first][i];
+            V2.row(j) = U.row(it->first) - U.row(i);
+          }
+          j++;
         }
-        j++;
-      }
-      Eigen::Matrix3d s = V1.transpose() * V2;
-      for(int x = 0; x < data.dim; x++ ) {
-        for(int y = 0; y < data.dim; y++ ) {
+        Eigen::Matrix3d s = V1.transpose() * V2;
+        for(int x = 0; x < data.dim; x++ ) {
+          for(int y = 0; y < data.dim; y++ ) {
 
-          S(x * data.n + i, y) = s(x,y);
+            S(x * data.n + i, y) = s(x,y);
+          }
         }
       }
+
+    }else {
+
+      S = data.CSM * Udim;
     }
     // THIS NORMALIZATION IS IMPORTANT TO GET SINGLE PRECISION SVD CODE TO WORK
     // CORRECTLY.
@@ -336,31 +346,36 @@ bool custom_arap_solve(
 
     VectorXd Rcol;
     igl::columnize(eff_R,num_rots,2,Rcol);
-    //VectorXd Bcol = -data.K * Rcol;
     VectorXd Bcol = VectorXd::Zero(data.n * data.dim);
     assert(Bcol.size() == data.n*data.dim);
-    for(int i = 0; i< data.n; i++) {
+    if(custom) {
+      for(int i = 0; i< data.n; i++) {
 
-      for(auto it = custom_data.sideVecs[i].begin(); it != custom_data.sideVecs[i].end(); ++it) {
+        for(auto it = custom_data.sideVecs[i].begin(); it != custom_data.sideVecs[i].end(); ++it) {
 
-        Matrix3d rot1 = eff_R.block<3, 3>(0, i * 3);
-        Matrix3d rot2 = eff_R.block<3, 3>(0, it->first * 3);
+          Matrix3d rot1 = eff_R.block<3, 3>(0, i * 3);
+          Matrix3d rot2 = eff_R.block<3, 3>(0, it->first * 3);
 
-        Eigen::Vector3d a = rot1 * it->second;
-        Eigen::Vector3d b = rot2 * custom_data.sideVecs[it->first][i];
-        a = a-b;
-        a = a * 0.6;
-        // Eigen::Matrix3d CSM_block;
-        // for (int row = 0; row < 3; ++row) {
-        //     for (int col = 0; col < 3; ++col) {
-        //         CSM_block(row, col) = data.CSM.coeff(3 * i + row, 3 * it->first + col);
-        //     }
-        // }
-        // a = CSM_block * a;
-        Bcol(i) += a(0);
-        Bcol(i+n) += a(1);
-        Bcol(i+(2*n)) += a(2);
+          Eigen::Vector3d a = rot1 * it->second;
+          Eigen::Vector3d b = rot2 * custom_data.sideVecs[it->first][i];
+          a = a-b;
+          a = a * 0.6;
+          // Eigen::Matrix3d CSM_block;
+          // for (int row = 0; row < 3; ++row) {
+          //     for (int col = 0; col < 3; ++col) {
+          //         CSM_block(row, col) = data.CSM.coeff(3 * i + row, 3 * it->first + col);
+          //     }
+          // }
+          // a = CSM_block * a;
+          Bcol(i) += a(0);
+          Bcol(i+n) += a(1);
+          Bcol(i+(2*n)) += a(2);
+        }
       }
+
+    } else {
+
+     Bcol = -data.K * Rcol;
     }
     // std::cout << Bcol << std::endl;
      // Bcol = -data.K * Rcol;
