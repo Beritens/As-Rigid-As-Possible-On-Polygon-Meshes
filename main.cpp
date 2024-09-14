@@ -73,62 +73,62 @@ custom_data custom_data;
 double x = 0;
 double y =  0;
 double z = 0;
-bool autodiff = false;
+bool autodiff = true;
 
 namespace std {
-    template <>
-    struct numeric_limits<TinyAD::Scalar<24, double, true>> {
+    template <int N, typename T, bool B>
+    struct numeric_limits<TinyAD::Scalar<N, T, B>> {
         static constexpr bool is_specialized = true;
 
-        static TinyAD::Scalar<24, double, true> min() noexcept {
-            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::min()};
+        static TinyAD::Scalar<N, T, B> min() noexcept {
+            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::min()};
         }
 
-        static TinyAD::Scalar<24, double, true> max() noexcept {
-            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::max()};
+        static TinyAD::Scalar<N, T, B> max() noexcept {
+            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::max()};
         }
 
-        static TinyAD::Scalar<24, double, true> lowest() noexcept {
-            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::lowest()};
+        static TinyAD::Scalar<N, T, B> lowest() noexcept {
+            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::lowest()};
         }
 
-        static constexpr int digits = std::numeric_limits<double>::digits;
-        static constexpr int digits10 = std::numeric_limits<double>::digits10;
-        static constexpr int max_digits10 = std::numeric_limits<double>::max_digits10;
+        static constexpr int digits = std::numeric_limits<T>::digits;
+        static constexpr int digits10 = std::numeric_limits<T>::digits10;
+        static constexpr int max_digits10 = std::numeric_limits<T>::max_digits10;
 
-        static constexpr bool is_signed = std::numeric_limits<double>::is_signed;
-        static constexpr bool is_integer = false;
-        static constexpr bool is_exact = false;
+        static constexpr bool is_signed = std::numeric_limits<T>::is_signed;
+        static constexpr bool is_integer = std::numeric_limits<T>::is_integer;
+        static constexpr bool is_exact = std::numeric_limits<T>::is_exact;
 
-        static constexpr bool has_infinity = std::numeric_limits<double>::has_infinity;
-        static constexpr bool has_quiet_NaN = std::numeric_limits<double>::has_quiet_NaN;
-        static constexpr bool has_signaling_NaN = std::numeric_limits<double>::has_signaling_NaN;
-        static constexpr float_denorm_style has_denorm = std::numeric_limits<double>::has_denorm;
-        static constexpr bool has_denorm_loss = std::numeric_limits<double>::has_denorm_loss;
+        static constexpr bool has_infinity = std::numeric_limits<T>::has_infinity;
+        static constexpr bool has_quiet_NaN = std::numeric_limits<T>::has_quiet_NaN;
+        static constexpr bool has_signaling_NaN = std::numeric_limits<T>::has_signaling_NaN;
+        static constexpr float_denorm_style has_denorm = std::numeric_limits<T>::has_denorm;
+        static constexpr bool has_denorm_loss = std::numeric_limits<T>::has_denorm_loss;
 
-        static TinyAD::Scalar<24, double, true> infinity() noexcept {
-            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::infinity()};
+        static TinyAD::Scalar<N, T, B> infinity() noexcept {
+            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::infinity()};
         }
 
-        static TinyAD::Scalar<24, double, true> quiet_NaN() noexcept {
-            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::quiet_NaN()};
+        static TinyAD::Scalar<N, T, B> quiet_NaN() noexcept {
+            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::quiet_NaN()};
         }
 
-        static TinyAD::Scalar<24, double, true> signaling_NaN() noexcept {
-            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::signaling_NaN()};
+        static TinyAD::Scalar<N, T, B> signaling_NaN() noexcept {
+            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::signaling_NaN()};
         }
 
-        static TinyAD::Scalar<24, double, true> denorm_min() noexcept {
-            return TinyAD::Scalar<24, double, true>{std::numeric_limits<double>::denorm_min()};
+        static TinyAD::Scalar<N, T, B> denorm_min() noexcept {
+            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::denorm_min()};
         }
 
-        static constexpr bool is_iec559 = std::numeric_limits<double>::is_iec559;
-        static constexpr bool is_bounded = std::numeric_limits<double>::is_bounded;
-        static constexpr bool is_modulo = std::numeric_limits<double>::is_modulo;
+        static constexpr bool is_iec559 = std::numeric_limits<T>::is_iec559;
+        static constexpr bool is_bounded = std::numeric_limits<T>::is_bounded;
+        static constexpr bool is_modulo = std::numeric_limits<T>::is_modulo;
 
-        static constexpr bool traps = std::numeric_limits<double>::traps;
-        static constexpr bool tinyness_before = std::numeric_limits<double>::tinyness_before;
-        static constexpr float_round_style round_style = std::numeric_limits<double>::round_style;
+        static constexpr bool traps = std::numeric_limits<T>::traps;
+        static constexpr bool tinyness_before = std::numeric_limits<T>::tinyness_before;
+        static constexpr float_round_style round_style = std::numeric_limits<T>::round_style;
     };
 }
 
@@ -242,9 +242,18 @@ void calculateHood(Eigen::MatrixXi polyF, int face) {
     int size = faceSize(polyF.row(face));
 
     //TODO: find faces that are also connected to last faces (makes finding connections easier)
-    bool done = false;
     int i = 0;
-    while(!done) {
+    while(i < polyF.rows()) {
+        bool giveUp = i == face;
+        for(int j = 0; j<neighbours.size(); j++) {
+            if(i == neighbours[j]) {
+                giveUp = true;
+            }
+        }
+        if(giveUp) {
+            i++;
+            continue;
+        }
         int otherFaceSize = faceSize(polyF.row(i));
         int lastFaceSize = -1;
         if(neighbours.size()>0) {
@@ -279,8 +288,12 @@ void calculateHood(Eigen::MatrixXi polyF, int face) {
         }
         if(count >=2 && (count2 >= 2 || lastFaceSize<0)) {
             neighbours.push_back(i);
+            i = 0;
         }
-        i++;
+        else {
+
+            i++;
+        }
     }
     Hoods[face] = neighbours;
 }
@@ -319,19 +332,25 @@ void precomputeMesh(Eigen::MatrixXi polyF) {
             int k = (j+1)%neighbours.size();
             std::vector<Eigen::VectorXi> faces;
             faces.push_back(polyF.row(i));
-            faces.push_back(polyF.row(j));
-            faces.push_back(polyF.row(k));
+            faces.push_back(polyF.row(neighbours[j]));
+            faces.push_back(polyF.row(neighbours[k]));
             std::set<int> shared_verts;
             std::set<int> shared_verts_temp;
 
             for(int v : faces[0]) {
 
+                if(v < 0) {
+                    break;
+                }
                 shared_verts.insert(v);
             }
             for(int idx = 1; idx<3; idx++) {
                 for(int v : faces[idx]) {
+                    if(v <0) {
+                        break;
+                    }
                     if(shared_verts.count(v) >0) {
-                        shared_verts.insert(v);
+                        shared_verts_temp.insert(v);
                     }
                 }
                 shared_verts = shared_verts_temp;
@@ -558,17 +577,26 @@ int main(int argc, char *argv[]) {
                     }
 
 
-                    Eigen::MatrixXd V1(neighbours.size(),3);
-                    Eigen::MatrixX<T> V2(neighbours.size(),3);
+                    Eigen::MatrixXd V1(corners.rows(),3);
+                    Eigen::MatrixX<T> V2(corners.rows(),3);
 
-                    for(int i = 0; i < corners.size(); i++) {
+                    for(int i = 0; i < corners.rows(); i++) {
                         V2.row(i) = corners.row(i) - center.transpose();
                     }
 
-                    for(int i = 0; i < corners.size(); i++) {
-                       //TODO: get original vertex
+                    for(int i = 0; i < corners.rows(); i++) {
+                        Eigen::Vector3d vert = Verts.row(HoodVerts[f_idx][i]);
+                        Eigen::Vector3d oldCenter = centers.row(f_idx);
+                        V1.row(i) = vert - oldCenter;
                     }
-                    return 0;
+
+                    Eigen::Matrix3<T> Rot = getRotation<T>(V1, V2);
+
+                    T returnValue = 0;
+                    for(int i = 0; i < V1.rows(); i++) {
+                       returnValue += (V1.row(i).transpose() - (Rot * V2.row(i).transpose())).squaredNorm();
+                    }
+                    return returnValue;
 
                 });
             }
@@ -650,8 +678,8 @@ int main(int argc, char *argv[]) {
                 if(autodiff) {
                     auto [f, g, H_proj] = func.eval_with_hessian_proj(x);
                     TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
-                    //Eigen::VectorXd d = cg_solver.compute(H_proj + 1e-4 * TinyAD::identity<double>(x.size())).solve(-g);
-                    Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver);
+                    Eigen::VectorXd d = cg_solver.compute(H_proj + 1e-4 * TinyAD::identity<double>(x.size())).solve(-g);
+                    //Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver);
                     if (TinyAD::newton_decrement(d, g) < convergence_eps) {
                         //break;
                     }
