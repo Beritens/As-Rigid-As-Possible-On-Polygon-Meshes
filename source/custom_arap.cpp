@@ -22,7 +22,9 @@ bool custom_arap_precomputation(
      const Eigen::VectorXi& b,
      igl::ARAPData& data,
      custom_data& custom_data,
-     const Eigen::MatrixXd& Polygons)
+     const Eigen::MatrixXd& Polygons,
+     const Eigen::MatrixXd& corners,
+     const Eigen::MatrixXi& faces)
 {
   using namespace std;
   using namespace Eigen;
@@ -191,6 +193,40 @@ bool custom_arap_precomputation(
 
   }
 
+  for(int i = 0; i< faces.rows(); i++) {
+    for(int j = 0; j < faces.rows(); j++) {
+      if(i == j) {
+        continue;
+      }
+      if(custom_data.cornerVecs.count(i)) {
+        if(custom_data.cornerVecs[i].count(j)) {
+          continue;
+        }
+      }
+      else {
+        std::map<int, std::vector<Eigen::Vector3d>> map;
+        custom_data.cornerVecs[i] = map;
+
+      }
+      for(int k = 0; k < faces.cols(); k++) {
+        if(faces(i,k) < 0) {
+          continue;
+        }
+
+
+        for(int l = 0; l< faces.cols(); l++) {
+          if(faces(j,l) < 0) {
+            continue;
+          }
+          if(faces(j,l) == faces(i,k)) {
+            custom_data.cornerVecs[i][j].push_back(corners.row(faces(j,l)) - V.row(i));
+            custom_data.cornerVecs[j][i].push_back(corners.row(faces(i,k)) - V.row(j));
+          }
+        }
+      }
+    }
+  }
+
   return min_quad_with_fixed_precompute(
     Q,b,SparseMatrix<double>(),true,data.solver_data);
 }
@@ -243,10 +279,10 @@ bool custom_arap_solve(
       for(int i = 0; i< data.n; i++) {
 
         int num = custom_data.sideVecs[i].size();
-        Eigen::MatrixXd V1(num,3);
-        Eigen::MatrixXd V2(num,3);
+        Eigen::MatrixXd V1(2 * num,3);
+        Eigen::MatrixXd V2(2 * num,3);
         int j = 0;
-        for(auto it = custom_data.sideVecs[i].begin(); it != custom_data.sideVecs[i].end(); ++it) {
+        for(auto it = custom_data.cornerVecs[i].begin(); it != custom_data.cornerVecs[i].end(); ++it) {
           if(rotations.cols() > 0) {
 
             Matrix3d rot1 = rotations.block<3, 3>(0, i * 3);
@@ -260,16 +296,25 @@ bool custom_arap_solve(
             // Eigen::Vector3d projected = normal * (normal.dot(b));
             // b = b - projected;
             // b = b.normalized()*length;
-            Eigen::Vector3d b = custom_data.sideVecs[it->first][i];
+            Eigen::Vector3d b = custom_data.cornerVecs[it->first][i][0];
             b = rot2 * b;
 
-            V1.row(j) = it->second;
+            V1.row(j) = it->second[0];
             V2.row(j) = (U.row(it->first)+ b.transpose()) - U.row(i);
+
+            Eigen::Vector3d b2 = custom_data.cornerVecs[it->first][i][1];
+            b2 = rot2 * b2;
+
+
+            V1.row(j+1) = it->second[1];
+            V2.row(j+1) = (U.row(it->first)+ b2.transpose()) - U.row(i);
           } else {
-            V1.row(j) = it->second - custom_data.sideVecs[it->first][i];
+            V1.row(j) = it->second[0] - custom_data.cornerVecs[it->first][i][0];
             V2.row(j) = U.row(it->first) - U.row(i);
+            V1.row(j+1) = it->second[1] - custom_data.cornerVecs[it->first][i][1];
+            V2.row(j+1) = U.row(it->first) - U.row(i);
           }
-          j++;
+          j+=2;
         }
         Eigen::Matrix3d s = V1.transpose() * V2;
         for(int x = 0; x < data.dim; x++ ) {

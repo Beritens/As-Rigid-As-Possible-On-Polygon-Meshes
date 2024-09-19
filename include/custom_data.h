@@ -11,4 +11,5 @@
 
 struct custom_data {
     std::map<int, std::map<int, Eigen::Vector3d>> sideVecs;
+    std::map<int, std::map<int, std::vector<Eigen::Vector3d>>> cornerVecs;
 };

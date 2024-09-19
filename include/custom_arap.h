@@ -39,7 +39,9 @@
       const Eigen::VectorXi& b,
       igl::ARAPData& data,
       custom_data& custom_data,
-      const Eigen::MatrixXd& Polygons);
+      const Eigen::MatrixXd& Polygons,
+     const Eigen::MatrixXd& corners,
+     const Eigen::MatrixXi& faces);
   /// Conduct arap solve.
   ///
   /// @param[in] bc  #b by dim list of boundary conditions

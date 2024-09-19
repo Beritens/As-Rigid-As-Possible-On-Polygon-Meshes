@@ -325,6 +325,7 @@ void precomputeMesh(Eigen::MatrixXi polyF) {
     for (int i = 0; i < V.rows(); i++) {
         setConnectivityForOneVertex(polyF, i);
     }
+    //basically just faces, but making sure they are in the right order
     for(int i = 0; i< Hoods.size(); i++) {
         std::vector<int> neighbours = Hoods[i];
         std::vector<int> verts;
@@ -386,7 +387,7 @@ int main(int argc, char *argv[]) {
 
     //igl::readOFF("../Dodecahedron.off", V, polyF);
 
-    happly::PLYData plyIn("../dodec.ply");
+    happly::PLYData plyIn("../test.ply");
     std::vector<std::array<double, 3>> vPos = plyIn.getVertexPositions();
     std::vector<std::vector<size_t>> fInd = plyIn.getFaceIndices<size_t>();
     V.conservativeResize(vPos.size(),3);
@@ -429,7 +430,7 @@ int main(int argc, char *argv[]) {
     std::cout << rotationTest << std::endl;
 
 
-    Eigen::VectorXi conP(2); conP << 0, 10;
+    Eigen::VectorXi conP(2); conP << 0, 12;
     Eigen::MatrixXd lagrangeMultipliers = Eigen::MatrixXd::Zero(conP.size(),4);
     Eigen::MatrixXd constraints(conP.size(),3);
     for(int i = 0; i < conP.size(); i++) {
@@ -467,7 +468,7 @@ int main(int argc, char *argv[]) {
 
             igl::ARAPData arap_data;
             arap_data.max_iter = 1;
-            custom_arap_precomputation(centers,connections, centers.cols(), b, arap_data, custom_data, Polygons);
+            custom_arap_precomputation(centers,connections, centers.cols(), b, arap_data, custom_data, Polygons, V, polyF);
 
 
             for (int i = 0; i < connections.rows(); i++) {
@@ -535,24 +536,28 @@ int main(int argc, char *argv[]) {
             //         0, 0, 2.4;
 
             // Set up function with 3D vertex positions as variables.
-            auto func = TinyAD::scalar_function<4>(TinyAD::range(Polygons.rows() + conP.size()));
+            auto func = TinyAD::scalar_function<4>(TinyAD::range(Polygons.rows()));
 
 
-            func.add_elements<4>(TinyAD::range(conP.rows()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
 
-                using T = TINYAD_SCALAR_TYPE(element);
-                Eigen::Index f_idx = element.handle;
-                Eigen::Vector4<T> lagrangeM = element.variables(f_idx + Polygons.rows());
-                Eigen::Vector4<T> vecs[3];
-                for(int i = 0; i<3; i++) {
-                    vecs[i] = element.variables(Groups(conP(f_idx), i));
-                }
-                Eigen::Vector3<T> point = getPoint<T>(vecs[0], vecs[1], vecs[2]);
-                Eigen::Vector3d target = constraints.row(f_idx);
-                return 100 * (target - point).squaredNorm();
-            });
+            bool penalty = true;
+            if(true) {
+                func.add_elements<4>(TinyAD::range(conP.rows()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
 
-            bool face = true;
+                    using T = TINYAD_SCALAR_TYPE(element);
+                    Eigen::Index f_idx = element.handle;
+                    //Eigen::Vector4<T> lagrangeM = element.variables(f_idx + Polygons.rows());
+                    Eigen::Vector4<T> vecs[3];
+                    for(int i = 0; i<3; i++) {
+                        vecs[i] = element.variables(Groups(conP(f_idx), i));
+                    }
+                    Eigen::Vector3<T> point = getPoint<T>(vecs[0], vecs[1], vecs[2]);
+                    Eigen::Vector3d target = constraints.row(f_idx);
+                    return 1000 * (target - point).squaredNorm();
+                });
+            }
+
+            bool face = false;
             if(face) {
 
                 func.add_elements<7>(TinyAD::range(Hoods.size()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
@@ -661,9 +666,6 @@ int main(int argc, char *argv[]) {
             // each variable handle (vertex index) to its initial 2D value (Eigen::Vector2d).
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
-                if(v_idx >= Polygons.rows()) {
-                    return lagrangeMultipliers.row(v_idx - Polygons.rows());
-                }
                 return Polygons.row(v_idx);
             });
             // Projected Newton
@@ -685,16 +687,45 @@ int main(int argc, char *argv[]) {
                     }
                     x = TinyAD::line_search(x, d, f, g, func);
 
+
                     func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
-                        if(v_idx >= Polygons.rows()) {
-                            lagrangeMultipliers.row(v_idx-Polygons.rows()) = p;
-                        } else {
+                        // if(v_idx >= Polygons.rows()) {
+                        //     lagrangeMultipliers.row(v_idx-Polygons.rows()) = p;
+                        // }
+                        //else {
                             Polygons.row(v_idx) = p;
-                        }
+                        //}
                         // V.row(v_idx) = p(seq(0, 2));
                         // Normals.row(v_idx) = p(seq(3, 5));
                         //P.row(v_idx) = p;
                     });
+                    if(!penalty) {
+                        for(int j = 0; j < conP.size(); j++) {
+
+                            Eigen::Vector4d vecs[3];
+                            for(int k = 0; k<3; k++) {
+                                vecs[k] = Polygons.row(Groups(conP(j), k));
+                            }
+                            Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
+                            Eigen::Vector3d normal2 = vecs[1].head(3).normalized();
+                            Eigen::Vector3d normal3 = vecs[2].head(3).normalized();
+
+                            Eigen::Matrix3d m;
+                            m.row(0) = normal1;
+                            m.row(1) = normal2;
+                            m.row(2) = normal3;
+
+                            Eigen::Vector3d b = m * constraints.row(j).transpose();
+                            for(int k = 0; k<3; k++) {
+                                Polygons(Groups(conP(j), k), 3) = b(k);
+                            }
+                        }
+
+                    }
+                    x = func.x_from_data([&](int v_idx) {
+                        return Polygons.row(v_idx);
+                    });
+
                 }
                 else {
 
