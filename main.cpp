@@ -25,6 +25,8 @@
 
 #include "custom_arap.h"
 #include "happly.h"
+#include "plane_arap.h"
+#include "poly_mesh_data.h"
 #include "TinyAD/Utils/LinearSolver.hh"
 #include "TinyAD/Utils/LineSearch.hh"
 #include "TinyAD/Utils/NewtonDecrement.hh"
@@ -47,9 +49,9 @@ Eigen::MatrixXd centers;
 //group used for first method
 Eigen::MatrixXi Groups;
 //Neighbourhood of Polygon
-std::map<int, std::vector<int>> Hoods;
+std::map<int, std::vector<int> > Hoods;
 //Neighbourhood Verts
-std::map<int, std::vector<int>> HoodVerts;
+std::map<int, std::vector<int> > HoodVerts;
 Eigen::MatrixXi VertsMap;
 Eigen::MatrixXi PolyMap;
 Eigen::MatrixXd Verts;
@@ -63,21 +65,23 @@ double anim_t = 0.0;
 double anim_t_dir = 0.03;
 igl::ARAPData arap_data;
 custom_data custom_data;
+poly_mesh_data mesh_data;
 
-    //0.947214,   0.58541,         0,
-    //0.8090169943749473, -0.8090169943749473, 0.8090169943749473;
+//0.947214,   0.58541,         0,
+//0.8090169943749473, -0.8090169943749473, 0.8090169943749473;
 // double x = 0.8090169943749473;
 // double y = -0.8090169943749473;
 // double z = 0.8090169943749473;
 //
 double x = 0;
-double y =  0;
+double y = 0;
 double z = 0;
 bool autodiff = true;
+bool newVersion = true;
 
 namespace std {
-    template <int N, typename T, bool B>
-    struct numeric_limits<TinyAD::Scalar<N, T, B>> {
+    template<int N, typename T, bool B>
+    struct numeric_limits<TinyAD::Scalar<N, T, B> > {
         static constexpr bool is_specialized = true;
 
         static TinyAD::Scalar<N, T, B> min() noexcept {
@@ -133,28 +137,6 @@ namespace std {
 }
 
 
-
-template<class T>
-Eigen::Vector3<T> getPoint(Eigen::Vector4<T> &poly1, Eigen::Vector4<T> &poly2, Eigen::Vector4<T> &poly3) {
-    Eigen::Vector3<T> normal1 = poly1.head(3).normalized();
-    Eigen::Vector3<T> normal2 = poly2.head(3).normalized();
-    Eigen::Vector3<T> normal3 = poly3.head(3).normalized();
-
-    Eigen::Matrix3<T> m;
-    m.row(0) = normal1;
-    m.row(1) = normal2;
-    m.row(2) = normal3;
-
-    Eigen::Vector3<T> b;
-    b << poly1(3), poly2(3), poly3(3);
-
-    //Eigen::Vector3<T> x = m.colPivHouseholderQr().solve(b);
-    Eigen::Vector3<T> x = m.partialPivLu().solve(b);
-    //Eigen::Vector3<T> x = normal1 * poly1(3) + normal2 * poly2(3) + normal3 * poly3(3);
-    return x;
-}
-
-
 template<class T>
 Eigen::Matrix3<T> getRotation(Eigen::MatrixX<T> v1, Eigen::MatrixX<T> v2) {
     // std::cout << v1 << std::endl;
@@ -194,14 +176,6 @@ void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &po
     viewer.data().set_mesh(Vf, F);
 }
 
-int faceSize(Eigen::VectorXi face) { int count = 0;
-    for (int i = 0; i < face.size(); ++i) {
-        if (face(i) != -1) {
-            count++;
-        }
-    }
-    return count;
-}
 
 void calculateFaceMatrixAndPolygons(Eigen::MatrixXi polyF, int face) {
     int size = faceSize(polyF.row(face));
@@ -230,7 +204,7 @@ void calculateFaceCenters(Eigen::MatrixXi polyF, int face) {
     Eigen::Vector3d center;
     int size = faceSize(polyF.row(face));
     for (int j = 0; j < size; j++) {
-        Eigen::Vector3d p = V.row(polyF(face,j));
+        Eigen::Vector3d p = V.row(polyF(face, j));
         center += p * (1.0 / (size * 1.0));
     }
     centers.row(face) = center;
@@ -243,55 +217,50 @@ void calculateHood(Eigen::MatrixXi polyF, int face) {
 
     //TODO: find faces that are also connected to last faces (makes finding connections easier)
     int i = 0;
-    while(i < polyF.rows()) {
+    while (i < polyF.rows()) {
         bool giveUp = i == face;
-        for(int j = 0; j<neighbours.size(); j++) {
-            if(i == neighbours[j]) {
+        for (int j = 0; j < neighbours.size(); j++) {
+            if (i == neighbours[j]) {
                 giveUp = true;
             }
         }
-        if(giveUp) {
+        if (giveUp) {
             i++;
             continue;
         }
         int otherFaceSize = faceSize(polyF.row(i));
         int lastFaceSize = -1;
-        if(neighbours.size()>0) {
-            lastFaceSize = faceSize(polyF.row(neighbours[neighbours.size()-1]));
+        if (neighbours.size() > 0) {
+            lastFaceSize = faceSize(polyF.row(neighbours[neighbours.size() - 1]));
         }
         int count = 0;
         int count2 = 0;
 
         for (int j = 0; j < otherFaceSize; j++) {
-            for(int k = 0; k< size; k++) {
-
-                if(polyF(face,k) == polyF(i,j)) {
-                    count ++;
-                    if(count >=2) {
+            for (int k = 0; k < size; k++) {
+                if (polyF(face, k) == polyF(i, j)) {
+                    count++;
+                    if (count >= 2) {
                         break;
                     }
                 }
             }
-            for(int k = 0; k< lastFaceSize; k++) {
-
-                if(polyF(neighbours[neighbours.size()-1],k) == polyF(i,j)) {
-                    count2 ++;
-                    if(count2 >=2) {
+            for (int k = 0; k < lastFaceSize; k++) {
+                if (polyF(neighbours[neighbours.size() - 1], k) == polyF(i, j)) {
+                    count2++;
+                    if (count2 >= 2) {
                         break;
                     }
                 }
             }
-            if(count >=2 && (count2 >= 2 || lastFaceSize<0)) {
+            if (count >= 2 && (count2 >= 2 || lastFaceSize < 0)) {
                 break;
             }
-
         }
-        if(count >=2 && (count2 >= 2 || lastFaceSize<0)) {
+        if (count >= 2 && (count2 >= 2 || lastFaceSize < 0)) {
             neighbours.push_back(i);
             i = 0;
-        }
-        else {
-
+        } else {
             i++;
         }
     }
@@ -320,17 +289,17 @@ void precomputeMesh(Eigen::MatrixXi polyF) {
     for (int i = 0; i < polyF.rows(); i++) {
         calculateFaceMatrixAndPolygons(polyF, i);
         calculateFaceCenters(polyF, i);
-        calculateHood(polyF,i);
+        calculateHood(polyF, i);
     }
     for (int i = 0; i < V.rows(); i++) {
         setConnectivityForOneVertex(polyF, i);
     }
     //basically just faces, but making sure they are in the right order
-    for(int i = 0; i< Hoods.size(); i++) {
+    for (int i = 0; i < Hoods.size(); i++) {
         std::vector<int> neighbours = Hoods[i];
         std::vector<int> verts;
-        for(int j = 0; j<neighbours.size(); j++) {
-            int k = (j+1)%neighbours.size();
+        for (int j = 0; j < neighbours.size(); j++) {
+            int k = (j + 1) % neighbours.size();
             std::vector<Eigen::VectorXi> faces;
             faces.push_back(polyF.row(i));
             faces.push_back(polyF.row(neighbours[j]));
@@ -338,19 +307,18 @@ void precomputeMesh(Eigen::MatrixXi polyF) {
             std::set<int> shared_verts;
             std::set<int> shared_verts_temp;
 
-            for(int v : faces[0]) {
-
-                if(v < 0) {
+            for (int v: faces[0]) {
+                if (v < 0) {
                     break;
                 }
                 shared_verts.insert(v);
             }
-            for(int idx = 1; idx<3; idx++) {
-                for(int v : faces[idx]) {
-                    if(v <0) {
+            for (int idx = 1; idx < 3; idx++) {
+                for (int v: faces[idx]) {
+                    if (v < 0) {
                         break;
                     }
-                    if(shared_verts.count(v) >0) {
+                    if (shared_verts.count(v) > 0) {
                         shared_verts_temp.insert(v);
                     }
                 }
@@ -359,7 +327,7 @@ void precomputeMesh(Eigen::MatrixXi polyF) {
             }
             verts.push_back(*shared_verts.begin());
         }
-        HoodVerts[i]=verts;
+        HoodVerts[i] = verts;
     }
     // std::cout<< centers << std::endl;
 }
@@ -367,7 +335,6 @@ void precomputeMesh(Eigen::MatrixXi polyF) {
 double getAngle(Eigen::Vector3d a, Eigen::Vector3d b) {
     return a.dot(b) / (a.norm() * b.norm());
 }
-
 
 
 int main(int argc, char *argv[]) {
@@ -388,29 +355,29 @@ int main(int argc, char *argv[]) {
     //igl::readOFF("../Dodecahedron.off", V, polyF);
 
     happly::PLYData plyIn("../test.ply");
-    std::vector<std::array<double, 3>> vPos = plyIn.getVertexPositions();
-    std::vector<std::vector<size_t>> fInd = plyIn.getFaceIndices<size_t>();
-    V.conservativeResize(vPos.size(),3);
-    for(int i = 0; i < vPos.size(); i++) {
-        V(i,0) = vPos[i][0];
-        V(i,1) = vPos[i][1];
-        V(i,2) = vPos[i][2];
+    std::vector<std::array<double, 3> > vPos = plyIn.getVertexPositions();
+    std::vector<std::vector<size_t> > fInd = plyIn.getFaceIndices<size_t>();
+    V.conservativeResize(vPos.size(), 3);
+    for (int i = 0; i < vPos.size(); i++) {
+        V(i, 0) = vPos[i][0];
+        V(i, 1) = vPos[i][1];
+        V(i, 2) = vPos[i][2];
     }
 
     int Fcols = 0;
-    for(int i = 0; i < fInd.size(); i++) {
-        if(fInd[i].size() > Fcols) {
+    for (int i = 0; i < fInd.size(); i++) {
+        if (fInd[i].size() > Fcols) {
             Fcols = fInd[i].size();
         }
     }
 
-    polyF.conservativeResize(fInd.size(),Fcols);
-    for(int i = 0; i < fInd.size(); i++) {
-        for(int j = 0; j< Fcols; j++) {
-            if(fInd[i].size() > j) {
-                polyF(i,j) = fInd[i][j];
+    polyF.conservativeResize(fInd.size(), Fcols);
+    for (int i = 0; i < fInd.size(); i++) {
+        for (int j = 0; j < Fcols; j++) {
+            if (fInd[i].size() > j) {
+                polyF(i, j) = fInd[i][j];
             } else {
-                polyF(i,j) = -1;
+                polyF(i, j) = -1;
             }
         }
     }
@@ -421,8 +388,6 @@ int main(int argc, char *argv[]) {
     //std::cout << Normals << std::endl;
 
 
-
-
     igl::opengl::glfw::Viewer viewer;
     draw_face_mesh(viewer, Polygons);
 
@@ -430,21 +395,20 @@ int main(int argc, char *argv[]) {
     std::cout << rotationTest << std::endl;
 
 
-    Eigen::VectorXi conP(2); conP << 0, 12;
-    Eigen::MatrixXd lagrangeMultipliers = Eigen::MatrixXd::Zero(conP.size(),4);
-    Eigen::MatrixXd constraints(conP.size(),3);
-    for(int i = 0; i < conP.size(); i++) {
-        if(autodiff) {
+    Eigen::VectorXi conP(2);
+    conP << 0, 12;
+    Eigen::MatrixXd lagrangeMultipliers = Eigen::MatrixXd::Zero(conP.size(), 4);
+    Eigen::MatrixXd constraints(conP.size(), 3);
+    for (int i = 0; i < conP.size(); i++) {
+        if (autodiff || newVersion) {
             constraints.row(i) = V.row(conP(i));
-
-        }
-        else {
+        } else {
             constraints.row(i) = centers.row(conP(i));
         }
     }
-    x = constraints(1,0);
-    y = constraints(1,1);
-    z = constraints(1,2);
+    x = constraints(1, 0);
+    y = constraints(1, 1);
+    z = constraints(1, 2);
 
     bool redraw = false;
     std::mutex m;
@@ -462,13 +426,17 @@ int main(int argc, char *argv[]) {
 
             U = centers;
             b.conservativeResize(conP.size());
-            for(int i = 0; i<conP.size(); i++) {
+            for (int i = 0; i < conP.size(); i++) {
                 b(i) = conP(i);
             }
 
             igl::ARAPData arap_data;
             arap_data.max_iter = 1;
-            custom_arap_precomputation(centers,connections, centers.cols(), b, arap_data, custom_data, Polygons, V, polyF);
+            custom_arap_precomputation(centers, connections, centers.cols(), b, arap_data, custom_data, Polygons, V,
+                                       polyF);
+
+            precompute_poly_mesh(mesh_data, V, polyF);
+            plane_arap_precomputation(mesh_data, b);
 
 
             for (int i = 0; i < connections.rows(); i++) {
@@ -479,7 +447,8 @@ int main(int argc, char *argv[]) {
                 Vector4d poly3 = Polygons.row(connections(i, 2));
 
                 Verts.row(i) = getPoint(poly1, poly2, poly3);
-                Vector3i polies; polies << connections(i,0), connections(i,1), connections(1,2);
+                Vector3i polies;
+                polies << connections(i, 0), connections(i, 1), connections(1, 2);
                 PolyMap.row(i) = polies;
 
                 for (int j = 0; j < 3; j++) {
@@ -539,57 +508,53 @@ int main(int argc, char *argv[]) {
             auto func = TinyAD::scalar_function<4>(TinyAD::range(Polygons.rows()));
 
 
-
             bool penalty = true;
-            if(true) {
+            if (true) {
                 func.add_elements<4>(TinyAD::range(conP.rows()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
-
                     using T = TINYAD_SCALAR_TYPE(element);
                     Eigen::Index f_idx = element.handle;
                     //Eigen::Vector4<T> lagrangeM = element.variables(f_idx + Polygons.rows());
                     Eigen::Vector4<T> vecs[3];
-                    for(int i = 0; i<3; i++) {
+                    for (int i = 0; i < 3; i++) {
                         vecs[i] = element.variables(Groups(conP(f_idx), i));
                     }
                     Eigen::Vector3<T> point = getPoint<T>(vecs[0], vecs[1], vecs[2]);
                     Eigen::Vector3d target = constraints.row(f_idx);
-                    return 1000 * (target - point).squaredNorm();
+                    return 1000000 * (target - point).squaredNorm();
                 });
             }
 
             bool face = false;
-            if(face) {
-
+            if (face) {
                 func.add_elements<7>(TinyAD::range(Hoods.size()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
-
                     using T = TINYAD_SCALAR_TYPE(element);
 
                     Eigen::Index f_idx = element.handle;
                     std::vector<int> neighbours = Hoods[f_idx];
-                    Eigen::MatrixX<T> corners(neighbours.size(),3);
-                    for(int i = 0; i<neighbours.size(); i++) {
-                        int j = (i+1)%neighbours.size();
+                    Eigen::MatrixX<T> corners(neighbours.size(), 3);
+                    for (int i = 0; i < neighbours.size(); i++) {
+                        int j = (i + 1) % neighbours.size();
                         Eigen::Vector4<T> p1 = element.variables(f_idx);
                         Eigen::Vector4<T> p2 = element.variables(neighbours[i]);
                         Eigen::Vector4<T> p3 = element.variables(neighbours[j]);
-                        Eigen::Vector3<T> point = getPoint<T>(p1,p2,p3);
+                        Eigen::Vector3<T> point = getPoint<T>(p1, p2, p3);
                         corners.row(i) = point;
-
                     }
-                    Eigen::Vector3<T> center; center << 0,0,0;
-                    for(int i = 0; i< corners.rows(); i++) {
-                       center += corners.row(i)/corners.rows();
+                    Eigen::Vector3<T> center;
+                    center << 0, 0, 0;
+                    for (int i = 0; i < corners.rows(); i++) {
+                        center += corners.row(i) / corners.rows();
                     }
 
 
-                    Eigen::MatrixXd V1(corners.rows(),3);
-                    Eigen::MatrixX<T> V2(corners.rows(),3);
+                    Eigen::MatrixXd V1(corners.rows(), 3);
+                    Eigen::MatrixX<T> V2(corners.rows(), 3);
 
-                    for(int i = 0; i < corners.rows(); i++) {
+                    for (int i = 0; i < corners.rows(); i++) {
                         V2.row(i) = corners.row(i) - center.transpose();
                     }
 
-                    for(int i = 0; i < corners.rows(); i++) {
+                    for (int i = 0; i < corners.rows(); i++) {
                         Eigen::Vector3d vert = Verts.row(HoodVerts[f_idx][i]);
                         Eigen::Vector3d oldCenter = centers.row(f_idx);
                         V1.row(i) = vert - oldCenter;
@@ -598,67 +563,67 @@ int main(int argc, char *argv[]) {
                     Eigen::Matrix3<T> Rot = getRotation<T>(V1, V2);
 
                     T returnValue = 0;
-                    for(int i = 0; i < V1.rows(); i++) {
-                       returnValue += (V1.row(i).transpose() - (Rot * V2.row(i).transpose())).squaredNorm();
+                    for (int i = 0; i < V1.rows(); i++) {
+                        returnValue += (V1.row(i).transpose() - (Rot * V2.row(i).transpose())).squaredNorm();
                     }
                     return returnValue;
-
                 });
-            }
-            else {
-                func.add_elements<6>(TinyAD::range(connections.rows()), [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
-                    //calculate arap energy
-                    using T = TINYAD_SCALAR_TYPE(element);
+            } else {
+                func.add_elements<6>(TinyAD::range(connections.rows()),
+                                     [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
+                                         //calculate arap energy
+                                         using T = TINYAD_SCALAR_TYPE(element);
 
-                    Eigen::Index f_idx = element.handle;
+                                         Eigen::Index f_idx = element.handle;
 
-                    Eigen::Vector4<T> vecs[6];
-                    for(int i = 0; i<6; i++) {
+                                         Eigen::Vector4<T> vecs[6];
+                                         for (int i = 0; i < 6; i++) {
+                                             vecs[i] = element.variables(Groups(f_idx, i));
+                                         }
 
-                        vecs[i] = element.variables(Groups(f_idx, i));
-                    }
+                                         //get points with current polygons
+                                         Eigen::Vector3<T> point1 = getPoint<T>(vecs[0], vecs[1], vecs[2]);
+                                         Eigen::Vector3<T> point2 = getPoint<T>(vecs[0], vecs[1], vecs[3]);
+                                         Eigen::Vector3<T> point3 = getPoint<T>(vecs[1], vecs[2], vecs[4]);
+                                         Eigen::Vector3<T> point4 = getPoint<T>(vecs[0], vecs[2], vecs[5]);
 
-                    //get points with current polygons
-                    Eigen::Vector3<T> point1 = getPoint<T>(vecs[0], vecs[1], vecs[2]);
-                    Eigen::Vector3<T> point2 = getPoint<T>(vecs[0], vecs[1], vecs[3]);
-                    Eigen::Vector3<T> point3 = getPoint<T>(vecs[1], vecs[2], vecs[4]);
-                    Eigen::Vector3<T> point4 = getPoint<T>(vecs[0], vecs[2], vecs[5]);
+                                         Eigen::Vector3<T> a = point2 - point1;
+                                         Eigen::Vector3<T> b = point3 - point1;
+                                         Eigen::Vector3<T> c = point4 - point1;
 
-                    Eigen::Vector3<T> a = point2 - point1;
-                    Eigen::Vector3<T> b = point3 - point1;
-                    Eigen::Vector3<T> c = point4 - point1;
+                                         //get points in original mesh
+                                         Eigen::Vector3d ogp1 = Verts.row(VertsMap(f_idx, 0));
+                                         Eigen::Vector3d ogp2 = Verts.row(VertsMap(f_idx, 1));
+                                         Eigen::Vector3d ogp3 = Verts.row(VertsMap(f_idx, 2));
+                                         Eigen::Vector3d ogp4 = Verts.row(VertsMap(f_idx, 3));
 
-                    //get points in original mesh
-                    Eigen::Vector3d ogp1 = Verts.row(VertsMap(f_idx, 0));
-                    Eigen::Vector3d ogp2 = Verts.row(VertsMap(f_idx, 1));
-                    Eigen::Vector3d ogp3 = Verts.row(VertsMap(f_idx, 2));
-                    Eigen::Vector3d ogp4 = Verts.row(VertsMap(f_idx, 3));
+                                         Eigen::Vector3d oa = ogp2 - ogp1;
+                                         Eigen::Vector3d ob = ogp3 - ogp1;
+                                         Eigen::Vector3d oc = ogp4 - ogp1;
 
-                    Eigen::Vector3d oa = ogp2 - ogp1;
-                    Eigen::Vector3d ob = ogp3 - ogp1;
-                    Eigen::Vector3d oc = ogp4 - ogp1;
+                                         Eigen::Matrix3d v1;
+                                         v1 << oa, ob, oc;
 
-                    Eigen::Matrix3d v1;
-                    v1 << oa, ob, oc;
+                                         Eigen::Matrix3<T> v2;
+                                         v2 << a, b, c;
 
-                    Eigen::Matrix3<T> v2;
-                    v2 << a, b, c;
+                                         Eigen::Matrix3<double> Rot2 = getRotation<double>(v1, v1);
+                                         //RealSvd2x2 caused problem (d was 0 but wasn't catched?) if (abs(d) < (std::numeric_limits<RealScalar>::min)() || d == 0) {
+                                         Eigen::Matrix3<T> Rot = getRotation<T>(v1, v2);
 
-                    Eigen::Matrix3<double> Rot2 = getRotation<double>(v1, v1);
-                    //RealSvd2x2 caused problem (d was 0 but wasn't catched?) if (abs(d) < (std::numeric_limits<RealScalar>::min)() || d == 0) {
-                    Eigen::Matrix3<T> Rot = getRotation<T>(v1, v2);
-
-                    T returnValue = 0;
-                    Eigen::Vector3<T> ra = Rot * a;
-                    Eigen::Vector3<T> rb = Rot * b;
-                    Eigen::Vector3<T> rc = Rot * c;
-                    returnValue += cotanWeights(VertsMap(f_idx, 0), VertsMap(f_idx, 1)) * (oa - ra).squaredNorm();
-                    returnValue += cotanWeights(VertsMap(f_idx, 0), VertsMap(f_idx, 2)) * (ob - rb).squaredNorm();
-                    returnValue += cotanWeights(VertsMap(f_idx, 0), VertsMap(f_idx, 3)) * (oc - rc).squaredNorm();
-                    return returnValue;
-                    // T returnValue = 0;
-                });
-
+                                         T returnValue = 0;
+                                         Eigen::Vector3<T> ra = Rot * a;
+                                         Eigen::Vector3<T> rb = Rot * b;
+                                         Eigen::Vector3<T> rc = Rot * c;
+                                         returnValue += cotanWeights(VertsMap(f_idx, 0), VertsMap(f_idx, 1)) * (oa - ra)
+                                                 .squaredNorm();
+                                         returnValue += cotanWeights(VertsMap(f_idx, 0), VertsMap(f_idx, 2)) * (ob - rb)
+                                                 .squaredNorm();
+                                         returnValue += cotanWeights(VertsMap(f_idx, 0), VertsMap(f_idx, 3)) * (oc - rc)
+                                                 .squaredNorm();
+                                         return returnValue;
+                                         // T returnValue = 0;
+                                     });
             }
 
             // Assemble inital x vector from P matrix.
@@ -677,7 +642,21 @@ int main(int argc, char *argv[]) {
             int i = -1;
             while (true) {
                 i++;
-                if(autodiff) {
+                if (newVersion) {
+                    MatrixXd bc(b.size(), 3);
+                    for (int j = 0; j < b.size(); j++) {
+                        bc.row(j) = mesh_data.V.row(b(j));
+                        for (int k = 0; k < conP.size(); k++) {
+                            if (conP(k) == b(j)) {
+                                bc.row(j) = constraints.row(k);
+                                break;
+                            }
+                        }
+                    }
+                    plane_arap_solve(bc, mesh_data);
+                    continue;
+                }
+                if (autodiff) {
                     auto [f, g, H_proj] = func.eval_with_hessian_proj(x);
                     TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
                     Eigen::VectorXd d = cg_solver.compute(H_proj + 1e-4 * TinyAD::identity<double>(x.size())).solve(-g);
@@ -693,17 +672,16 @@ int main(int argc, char *argv[]) {
                         //     lagrangeMultipliers.row(v_idx-Polygons.rows()) = p;
                         // }
                         //else {
-                            Polygons.row(v_idx) = p;
+                        Polygons.row(v_idx) = p;
                         //}
                         // V.row(v_idx) = p(seq(0, 2));
                         // Normals.row(v_idx) = p(seq(3, 5));
                         //P.row(v_idx) = p;
                     });
-                    if(!penalty) {
-                        for(int j = 0; j < conP.size(); j++) {
-
+                    if (!penalty && autodiff) {
+                        for (int j = 0; j < conP.size(); j++) {
                             Eigen::Vector4d vecs[3];
-                            for(int k = 0; k<3; k++) {
+                            for (int k = 0; k < 3; k++) {
                                 vecs[k] = Polygons.row(Groups(conP(j), k));
                             }
                             Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
@@ -716,32 +694,29 @@ int main(int argc, char *argv[]) {
                             m.row(2) = normal3;
 
                             Eigen::Vector3d b = m * constraints.row(j).transpose();
-                            for(int k = 0; k<3; k++) {
+                            for (int k = 0; k < 3; k++) {
                                 Polygons(Groups(conP(j), k), 3) = b(k);
                             }
                         }
 
+                        x = func.x_from_data([&](int v_idx) {
+                            return Polygons.row(v_idx);
+                        });
                     }
-                    x = func.x_from_data([&](int v_idx) {
-                        return Polygons.row(v_idx);
-                    });
-
-                }
-                else {
-
+                } else {
                     MatrixXd bc(b.size(), centers.cols());
                     for (int j = 0; j < b.size(); j++) {
                         bc.row(j) = centers.row(b(j));
-                        for(int k = 0; k< conP.size(); k++) {
-                           if(conP(k) == b(j)) {
-                               bc.row(j) = constraints.row(k);
-                               break;
-                           }
+                        for (int k = 0; k < conP.size(); k++) {
+                            if (conP(k) == b(j)) {
+                                bc.row(j) = constraints.row(k);
+                                break;
+                            }
                         }
                     }
 
                     custom_arap_solve(bc, arap_data, custom_data, U, rotations, originalPolygons);
-                    for(int j = 0; j<centers.rows(); j++) {
+                    for (int j = 0; j < centers.rows(); j++) {
                         //std::cout << rotations << std::endl;
                         Matrix3d rot = rotations.block<3, 3>(0, j * 3);
 
@@ -752,14 +727,12 @@ int main(int argc, char *argv[]) {
 
                         Eigen::VectorXd polygon(4);
 
-                        polygon << normal(0), normal(1) , normal(2), d;
+                        polygon << normal(0), normal(1), normal(2), d;
                         Polygons.row(j) = polygon;
 
                         //std::cout << rotations[j] << std::endl;
                     }
-
-                }
-                {
+                } {
                     std::lock_guard<std::mutex> lock(m);
                     redraw = true;
                 }
@@ -789,14 +762,12 @@ int main(int argc, char *argv[]) {
 
     viewer.callback_pre_draw = [&](igl::opengl::glfw::Viewer &viewer) {
         if (redraw) {
-
             draw_face_mesh(viewer, Polygons);
 
-            Eigen::RowVector3d point(x,y,z);
+            Eigen::RowVector3d point(x, y, z);
             //viewer.data().add_points(point, Eigen::RowVector3d(1, 0, 0));
 
-            for(int i = 0; i< constraints.rows(); i++) {
-
+            for (int i = 0; i < constraints.rows(); i++) {
                 viewer.data().add_points(constraints.row(i), Eigen::RowVector3d(1, 0, 0));
             }
             //viewer.data().set_vertices(P);
@@ -804,9 +775,9 @@ int main(int argc, char *argv[]) {
             //viewer.core().camera_zoom = 2;
             {
                 std::lock_guard<std::mutex> lock(m);
-                constraints(1,0) = x;
-                constraints(1,1) = y;
-                constraints(1,2) = z;
+                constraints(1, 0) = x;
+                constraints(1, 1) = y;
+                constraints(1, 2) = z;
                 redraw = false;
             }
         }
