@@ -68,8 +68,10 @@ bool plane_arap_precomputation(
         }
     }
     //calculate L matrix
-    Eigen::MatrixXd L = Eigen::MatrixXd::Zero(3 * mesh_data.V.rows() - b.size() * 3,
-                                              3 * mesh_data.V.rows() - b.size() * 3);
+    // Eigen::MatrixXd L = Eigen::MatrixXd::Zero(3 * mesh_data.V.rows() - b.size() * 3,
+    //                                           3 * mesh_data.V.rows() - b.size() * 3);
+    Eigen::MatrixXd L = Eigen::MatrixXd::Zero(3 * mesh_data.V.rows(),
+                                              3 * mesh_data.V.rows());
     for (int i = 0; i < mesh_data.V.rows(); i++) {
         // bool inB = false;
         // for (int j = 0; j < b.size(); j++) {
@@ -78,9 +80,9 @@ bool plane_arap_precomputation(
         //         break;
         //     }
         // }
-        if (data.positions[i * 3] < 0) {
-            continue;
-        }
+        // if (data.positions[i * 3] < 0) {
+        //     continue;
+        // }
         // if (inB) {
         //     L(key * 3, key * 3) = 1;
         //     L(key * 3 + 1, key * 3 + 1) = 1;
@@ -89,12 +91,14 @@ bool plane_arap_precomputation(
         // }
         std::set val = mesh_data.Hoods[i];
         int size = val.size();
-        int v = data.positions[i * 3];
+        //int v = data.positions[i * 3];
+        int v = i * 3;
         L(v, v) = size;
         L(v + 1, v + 1) = size;
         L(v + 2, v + 2) = size;
         for (auto j: val) {
-            int v2 = data.positions[j * 3];
+            //int v2 = data.positions[j * 3];
+            int v2 = j * 3;
             if (v2 < 0) {
                 continue;
             }
@@ -230,6 +234,40 @@ bool plane_arap_solve(
         }
     }
 
+
+    NInv = N.completeOrthogonalDecomposition().pseudoInverse();
+    Eigen::MatrixXd M = data.L * NInv;
+
+    std::vector<int> gons;
+    std::vector<double> dists;
+
+    for (int i = 0; i < data.b.size(); i++) {
+        Eigen::Vector4d vecs[3];
+        int j = 0;
+        for (auto k: mesh_data.VertPolygons[data.b(i)]) {
+            vecs[j] = mesh_data.Polygons.row(k);
+            j++;
+        }
+        Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
+        Eigen::Vector3d normal2 = vecs[1].head(3).normalized();
+        Eigen::Vector3d normal3 = vecs[2].head(3).normalized();
+
+        Eigen::Matrix3d m;
+        m.row(0) = normal1;
+        m.row(1) = normal2;
+        m.row(2) = normal3;
+
+        Eigen::Vector3d dist = m * bc.row(i).transpose();
+        j = 0;
+        for (auto k: mesh_data.VertPolygons[data.b(i)]) {
+            gons.push_back(k);
+            dists.push_back(dist(j));
+            mesh_data.Polygons(k, 3) = dist(j);
+            j++;
+        }
+    }
+
+
     Eigen::VectorXd b(3 * mesh_data.V.rows() - 3 * data.b.size());
     int row = 0;
     for (int i = 0; i < mesh_data.V.rows(); i++) {
@@ -243,11 +281,17 @@ bool plane_arap_solve(
             vRot += rot / 3;
         }
         for (auto v: mesh_data.Hoods[i]) {
-            if (data.positions[v * 3] < 0) {
-                // rightSide += mesh_data.V.row(i);
-                rightSide += bc.row(-(data.positions[v * 3] + 1)).transpose();
-            }
+            // if (data.positions[v * 3] < 0) {
+            //     // rightSide += mesh_data.V.row(i);
+            //     rightSide += bc.row(-(data.positions[v * 3] + 1)).transpose();
+            // }
             rightSide -= vRot * (mesh_data.V.row(v) - mesh_data.V.row(i)).transpose();
+        }
+        for (int j = 0; j < gons.size(); j++) {
+            int deletedPoly = gons[j];
+            rightSide(0) -= M(3 * i, deletedPoly) * dists[j];
+            rightSide(1) -= M(3 * i + 1, deletedPoly) * dists[j];
+            rightSide(2) -= M(3 * i + 2, deletedPoly) * dists[j];
         }
         //rightSide(1) = rightSide(1) * 5;
         b(row * 3) = rightSide(0);
@@ -255,6 +299,31 @@ bool plane_arap_solve(
         b(row * 3 + 2) = rightSide(2);
         row++;
     }
+
+    //construct Matrix without
+    Eigen::MatrixXd newM(M.rows() - 3 * data.b.size(), M.cols() - dists.size());
+    int y = 0;
+    for (int i = 0; i < M.cols(); i++) {
+        bool deltedCol = false;
+        for (int poly = 0; poly < gons.size(); poly++) {
+            if (gons[poly] == i) {
+                deltedCol = true;
+            }
+        }
+        if (deltedCol) {
+            continue;
+        }
+        for (int j = 0; j < M.rows(); j++) {
+            int x = data.positions[j];
+            if (x < 0) {
+                continue;
+            }
+            newM(x, y) = M(j, i);
+        }
+        y++;
+    }
+
+    Eigen::VectorXd bestDistances = newM.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b);
     // for (int i = 0; i < data.b.size(); i++) {
     //     b(data.b(i) * 3) = bc(i, 0) * 1;
     //     b(data.b(i) * 3 + 1) = bc(i, 1) * 1;
@@ -269,21 +338,18 @@ bool plane_arap_solve(
     // std::cout << data.L << std::endl;
     // std::cout << b << std::endl;
 
-    NInv = N.completeOrthogonalDecomposition().pseudoInverse();
     // std::cout << "before" << std::endl;
     // Eigen::VectorXd testVerts = NInv * d;
     // std::cout << testVerts << std::endl;
     //TODO: find actual solution
-    for (int i = data.b.size() - 1; i >= 0; i--) {
-        removeRow(NInv, data.b(i) * 3 + 2);
-        removeRow(NInv, data.b(i) * 3 + 1);
-        removeRow(NInv, data.b(i) * 3);
-    }
+    // for (int i = data.b.size() - 1; i >= 0; i--) {
+    //     removeRow(NInv, data.b(i) * 3 + 2);
+    //     removeRow(NInv, data.b(i) * 3 + 1);
+    //     removeRow(NInv, data.b(i) * 3);
+    // }
     // std::cout << "after" << std::endl;
     // testVerts = NInv * d;
     // std::cout << testVerts << std::endl;
-    Eigen::MatrixXd M = data.L * NInv;
-    Eigen::VectorXd bestDistances = M.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b);
     // for (int i = 0; i < data.b.size(); i++) {
     //     Eigen::Vector4d vecs[3];
     //     int j = 0;
@@ -308,8 +374,24 @@ bool plane_arap_solve(
     //     }
     // }
 
-    for (int i = 0; i < bestDistances.size(); i++) {
-        mesh_data.Polygons(i, 3) = bestDistances(i);
+    // for (int i = 0; i < bestDistances.size(); i++) {
+    //     mesh_data.Polygons(i, 3) = bestDistances(i);
+    // }
+    y = 0;
+    for (int i = 0; i < mesh_data.Polygons.rows(); i++) {
+        bool skipped = false;
+        for (int poly = 0; poly < gons.size(); poly++) {
+            if (gons[poly] == i) {
+                skipped = true;
+            }
+        }
+        if (skipped) {
+            continue;
+        }
+
+        mesh_data.Polygons(i, 3) = bestDistances(y);
+
+        y++;
     }
 
     //test
