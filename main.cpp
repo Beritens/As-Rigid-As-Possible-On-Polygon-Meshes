@@ -431,12 +431,13 @@ int main(int argc, char *argv[]) {
             }
 
             igl::ARAPData arap_data;
+            plane_arap_data plane_arap_data;
             arap_data.max_iter = 1;
             custom_arap_precomputation(centers, connections, centers.cols(), b, arap_data, custom_data, Polygons, V,
                                        polyF);
 
             precompute_poly_mesh(mesh_data, V, polyF);
-            plane_arap_precomputation(mesh_data, b);
+            plane_arap_precomputation(mesh_data, plane_arap_data, b);
 
 
             for (int i = 0; i < connections.rows(); i++) {
@@ -653,10 +654,9 @@ int main(int argc, char *argv[]) {
                             }
                         }
                     }
-                    plane_arap_solve(bc, mesh_data);
-                    continue;
-                }
-                if (autodiff) {
+                    plane_arap_solve(bc, mesh_data, plane_arap_data);
+                    Polygons = mesh_data.Polygons;
+                } else if (autodiff) {
                     auto [f, g, H_proj] = func.eval_with_hessian_proj(x);
                     TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
                     Eigen::VectorXd d = cg_solver.compute(H_proj + 1e-4 * TinyAD::identity<double>(x.size())).solve(-g);
