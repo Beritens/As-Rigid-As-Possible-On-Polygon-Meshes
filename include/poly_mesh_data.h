@@ -14,7 +14,7 @@ struct poly_mesh_data {
     Eigen::MatrixXd V;
     Eigen::MatrixXi F;
     Eigen::MatrixXd Polygons;
-    std::map<int, std::set<int> > Hoods;
+    std::map<int, std::vector<int> > Hoods;
     std::map<int, std::set<int> > VertPolygons;
 };
 
@@ -68,15 +68,52 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, Eigen
     data.V = V;
     data.F = F;
     calculatePolygons(data);
+    std::map<int, std::set<int> > tempHoods;
 
     //get neighbours
     for (int i = 0; i < F.rows(); i++) {
         const int size = faceSize(F.row(i));
         for (int j = 0; j < size; j++) {
             const int k = (j + 1) % size;
-            data.Hoods[F(i, j)].insert(F(i, k));
-            data.Hoods[F(i, k)].insert(F(i, j));
+            tempHoods[F(i, j)].insert(F(i, k));
+            tempHoods[F(i, k)].insert(F(i, j));
             data.VertPolygons[F(i, j)].insert(i);
+        }
+    }
+
+    for (int i = 0; i < V.size(); i++) {
+        int curr = *(tempHoods[i].begin());
+        data.Hoods[i].push_back(curr);
+
+        while (data.Hoods[i].size() < tempHoods[i].size()) {
+            bool fin = false;
+            for (auto v: tempHoods[i]) {
+                bool alreadyIn = false;
+                for (int existing: data.Hoods[i]) {
+                    if (v == existing) {
+                        alreadyIn = true;
+                        break;
+                    }
+                }
+                if (alreadyIn) {
+                    continue;
+                }
+                for (auto p1: data.VertPolygons[data.Hoods[i][data.Hoods[i].size() - 1]]) {
+                    for (auto p2: data.VertPolygons[v]) {
+                        if (p1 == p2) {
+                            data.Hoods[i].push_back(v);
+                            fin = true;
+                            break;
+                        }
+                    }
+                    if (fin) {
+                        break;
+                    }
+                }
+                if (fin) {
+                    break;
+                }
+            }
         }
     }
 }

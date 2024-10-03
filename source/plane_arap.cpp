@@ -71,7 +71,7 @@ bool plane_arap_precomputation(
     Eigen::MatrixXd L = Eigen::MatrixXd::Zero(3 * mesh_data.V.rows(),
                                               3 * mesh_data.V.rows());
     for (int i = 0; i < mesh_data.V.rows(); i++) {
-        std::set val = mesh_data.Hoods[i];
+        std::vector val = mesh_data.Hoods[i];
         int size = val.size();
         int v = i * 3;
         L(v, v) = size;
@@ -106,7 +106,7 @@ bool plane_arap_solve(
     const int n = mesh_data.V.rows();
     Eigen::MatrixXd N = Eigen::MatrixXd::Zero(mesh_data.F.rows(), mesh_data.V.rows() * 3);
     for (int i = 0; i < mesh_data.F.rows(); i++) {
-        Eigen::Vector3d normal = mesh_data.Polygons.row(i).head(3);
+        Eigen::Vector3d normal = mesh_data.Polygons.row(i).head(3).normalized();
         int size = faceSize(mesh_data.F.row(i));
         for (int j = 0; j < size; j++) {
             int vert = mesh_data.F(i, j);
@@ -121,10 +121,28 @@ bool plane_arap_solve(
 
 
     Eigen::MatrixXd NInv = N.completeOrthogonalDecomposition().pseudoInverse();
+    Eigen::VectorXd testV(mesh_data.V.rows() * 3);
+    for (int i = 0; i < mesh_data.V.rows(); i++) {
+        for (int j = 0; j < 3; j++) {
+            testV(3 * i + j) = mesh_data.V(i, j);
+        }
+    }
 
+    //test
+
+    std::cout << N << std::endl;
+    std::cout << d << std::endl;
     Eigen::VectorXd nV = NInv * d;
+    std::cout << "verts" << std::endl;
+    std::cout << nV << std::endl;
+    std::cout << "test" << std::endl;
+    std::cout << N * nV << std::endl;
+    std::cout << "test2" << std::endl;
+    std::cout << N * testV << std::endl;
 
-    double theta = 30.0 * M_PI / 180.0; // 1 degree in radians
+    //test end
+
+    double theta = 30.0 * M_PI / 180.0;
     Eigen::Matrix3d rotationMatrix;
     rotationMatrix << std::cos(theta), -std::sin(theta), 0,
             std::sin(theta), std::cos(theta), 0,
@@ -150,6 +168,8 @@ bool plane_arap_solve(
             j++;
         }
         Eigen::Matrix3d s = V1.transpose() * V2;
+        std::cout << V1 << std::endl;
+        std::cout << V2 << std::endl;
         for (int x = 0; x < 3; x++) {
             for (int y = 0; y < 3; y++) {
                 S(x * mesh_data.V.rows() + i, y) = s(x, y);
@@ -162,6 +182,8 @@ bool plane_arap_solve(
     const int Rdim = 3;
     MatrixXd R(Rdim, 3 * mesh_data.V.rows());
     igl::fit_rotations(S, true, R);
+
+    std::cout << R << std::endl;
 
     Eigen::MatrixXd M = data.L * NInv;
 
