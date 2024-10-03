@@ -131,6 +131,7 @@ bool plane_arap_solve(
     plane_arap_data &data) {
     using namespace Eigen;
     using namespace std;
+    // std::this_thread::sleep_for(std::chrono::milliseconds(500));
     const int n = mesh_data.V.rows();
     Eigen::MatrixXd N = Eigen::MatrixXd::Zero(mesh_data.F.rows(), mesh_data.V.rows() * 3);
     for (int i = 0; i < mesh_data.F.rows(); i++) {
@@ -152,90 +153,200 @@ bool plane_arap_solve(
 
     Eigen::VectorXd nV = NInv * d;
 
+    double theta = 30.0 * M_PI / 180.0; // 1 degree in radians
+    Eigen::Matrix3d rotationMatrix;
+    rotationMatrix << std::cos(theta), -std::sin(theta), 0,
+            std::sin(theta), std::cos(theta), 0,
+            0, 0, 1;
 
-    MatrixXd S(mesh_data.F.rows() * 3, 3);
-    //rotations:
-    for (int i = 0; i < mesh_data.F.rows(); i++) {
-        Eigen::MatrixXd V1(0, 3);
-        Eigen::MatrixXd V2(0, 3);
+    MatrixXd S(mesh_data.V.rows() * 3, 3);
+
+
+    for (int i = 0; i < mesh_data.V.rows(); i++) {
+        Eigen::MatrixXd V1 = Eigen::MatrixXd::Zero(mesh_data.Hoods[i].size(), 3);
+        Eigen::MatrixXd V2 = Eigen::MatrixXd::Zero(mesh_data.Hoods[i].size(), 3);
+
+        Eigen::Vector3d originalVert = mesh_data.V.row(i);
+        Eigen::Vector3d newVert = nV.segment(3 * i, 3);
         int j = 0;
-        int size = faceSize(mesh_data.F.row(i));
+        for (auto v: mesh_data.Hoods[i]) {
+            Eigen::Vector3d originalNeighbor = mesh_data.V.row(v);
+            Eigen::Vector3d newNeighbor = nV.segment(3 * v, 3);
 
-        Eigen::Vector3d ogCenter = Eigen::Vector3d::Zero();
-        Eigen::Vector3d newCenter = Eigen::Vector3d::Zero();
+            V1.row(j) += originalVert - originalNeighbor;
+            V2.row(j) += newVert - newNeighbor;
 
-        for (int j = 0; j < size; j++) {
-            ogCenter += mesh_data.V.row(mesh_data.F(i, j)) / size;
-            Eigen::Vector3d newVert = nV.segment(mesh_data.F(i, j) * 3, 3);
-            newCenter += newVert / size;
-        }
-
-
-        for (int j = 0; j < size; j++) {
-            //V1.row(j) = it->second + rot1.inverse()*(-rot2*custom_data.sideVecs[it->first][i]);
-            // Eigen::Vector3d normal = rot2 * Polygons.row(it->first).head(3).transpose();
-            // Eigen::Vector3d b = custom_data.sideVecs[it->first][i];
-            // double length = b.norm();
-            // b = rot1 * b;
-            // Eigen::Vector3d projected = normal * (normal.dot(b));
-            // b = b - projected;
-            // b = b.normalized()*length;
-            for (int k: mesh_data.Hoods[mesh_data.F(i, j)]) {
-                bool sameFace = false;
-                for (int face: mesh_data.VertPolygons[k]) {
-                    if (face == i) {
-                        sameFace = true;
-                        break;
-                    }
-                }
-                if (sameFace) {
-                    continue;
-                }
-
-                // add to V1 and V2
-                V1.conservativeResize(V1.rows() + 1, 3);
-                V2.conservativeResize(V2.rows() + 1, 3);
-                V1.row(V1.rows() - 1) = mesh_data.V.row(k).transpose() - ogCenter;
-                //just placeholder
-                V2.row(V2.rows() - 1) = mesh_data.V.row(k).transpose() - ogCenter;
-                //TODO: add row to V2
-            }
-
-            //V1.row(j) = ; original
-            //V2.row(j) = ; current
+            j++;
         }
         Eigen::Matrix3d s = V1.transpose() * V2;
         for (int x = 0; x < 3; x++) {
             for (int y = 0; y < 3; y++) {
-                S(x * mesh_data.F.rows() + i, y) = s(x, y);
+                S(x * mesh_data.V.rows() + i, y) = s(x, y);
             }
         }
     }
+
+    // Eigen::MatrixXd ogCenters(mesh_data.F.rows(), 3);
+    // Eigen::MatrixXd newCenters(mesh_data.F.rows(), 3);
+    // //rotations:
+    // for (int i = 0; i < mesh_data.F.rows(); i++) {
+    //     int size = faceSize(mesh_data.F.row(i));
+    //
+    //     Eigen::Vector3d ogCenter = Eigen::Vector3d::Zero();
+    //     Eigen::Vector3d newCenter = Eigen::Vector3d::Zero();
+    //
+    //     for (int j = 0; j < size; j++) {
+    //         ogCenter += mesh_data.V.row(mesh_data.F(i, j)) / size;
+    //         Eigen::Vector3d newVert = nV.segment(mesh_data.F(i, j) * 3, 3);
+    //         newCenter += newVert / size;
+    //     }
+    //     ogCenters.row(i) = ogCenter;
+    //     newCenters.row(i) = newCenter;
+    // }
+
+
+    // for (int i = 0; i < mesh_data.F.rows(); i++) {
+    //     Eigen::MatrixXd V1(0, 3);
+    //     Eigen::MatrixXd V2(0, 3);
+    //     int size = faceSize(mesh_data.F.row(i));
+    //
+    //     // Eigen::Vector3d ogCenter = Eigen::Vector3d::Zero();
+    //     // Eigen::Vector3d newCenter = Eigen::Vector3d::Zero();
+    //
+    //     // std::set<int> hoodFaces;
+    //     // for (int j = 0; j < size; j++) {
+    //     //     for (auto face: mesh_data.VertPolygons[mesh_data.F(i, j)]) {
+    //     //         hoodFaces.insert(face);
+    //     //     }
+    //     // }
+    //     // for (auto face: hoodFaces) {
+    //     //     if (face == i) {
+    //     //         continue;
+    //     //     }
+    //     //     V1.conservativeResize(V1.rows() + 1, 3);
+    //     //     V2.conservativeResize(V2.rows() + 1, 3);
+    //     //     V1.row(V1.rows() - 1) = ogCenters.row(face) - ogCenters.row(i);
+    //     //     // V2.row(V2.rows() - 1) = ogCenters.row(face) - ogCenters.row(i);
+    //     //     V2.row(V2.rows() - 1) = ogCenters.row(face) - ogCenters.row(i);
+    //     // }
+    //
+    //     for (int j = 0; j < size; j++) {
+    //         int corner = mesh_data.F(i, j);
+    //         Eigen::Vector3d cornerVert = nV.segment(3 * corner, 3);
+    //
+    //         // V1.row(V1.rows() - 1) = mesh_data.V.row(corner).transpose() - ogCenter;
+    //         // V2.row(V2.rows() - 1) = (mesh_data.V.row(corner).transpose() - ogCenter);
+    //         // V2.row(V2.rows() - 1) = cornerVert - newCenter;
+    //         // Eigen::Vector3d combined = Eigen::Vector3d::Zero();
+    //         // int n = 0;
+    //         for (auto k: mesh_data.Hoods[corner]) {
+    //             bool sameFace = false;
+    //             for (int face: mesh_data.VertPolygons[k]) {
+    //                 if (face == i) {
+    //                     sameFace = true;
+    //                     break;
+    //                 }
+    //             }
+    //             if (sameFace) {
+    //                 continue;
+    //             }
+    //             V1.conservativeResize(V1.rows() + 1, 3);
+    //             V2.conservativeResize(V2.rows() + 1, 3);
+    //
+    //             Eigen::Vector3d vert = nV.segment(3 * k, 3);
+    //
+    //             //double originalLength = (mesh_data.V.row(corner) - mesh_data.V.row(k)).norm();
+    //             // combined += 0.8 * (cornerVert) + 0.2 * (vert + (cornerVert - vert).normalized() * originalLength) -
+    //             //         newCenter;
+    //
+    //             V1.row(V1.rows() - 1) = mesh_data.V.row(k) - ogCenters.row(i);
+    //             V2.row(V2.rows() - 1) = vert - newCenters.row(i).transpose();
+    //             // n++;
+    //         }
+    //         // combined = combined / n;
+    //         // V2.row(V2.rows() - 1) = combined;
+    //
+    //         //test
+    //
+    //         // for (int k: mesh_data.Hoods[corner]) {
+    //         //     bool sameFace = false;
+    //         //     for (int face: mesh_data.VertPolygons[k]) {
+    //         //         if (face == i) {
+    //         //             sameFace = true;
+    //         //             break;
+    //         //         }
+    //         //     }
+    //         //     if (sameFace) {
+    //         //         continue;
+    //         //     }
+    //         //
+    //         //
+    //         //     Eigen::Vector3d vert = nV.segment(3 * k, 3);
+    //         //
+    //         //     double originalLength = (mesh_data.V.row(corner) - mesh_data.V.row(k)).norm();
+    //         //
+    //         //
+    //         //     // add to V1 and V2
+    //         //     V1.conservativeResize(V1.rows() + 1, 3);
+    //         //     V2.conservativeResize(V2.rows() + 1, 3);
+    //         //     V1.row(V1.rows() - 1) = mesh_data.V.row(corner).transpose() - ogCenter;
+    //         //     // just placeholder
+    //         //     // V2.row(V2.rows() - 1) = mesh_data.V.row(corner).transpose() - ogCenter;
+    //         //     V2.row(V2.rows() - 1) = (vert + (cornerVert - vert).normalized() * originalLength) - newCenter;
+    //         //     // V2.row(V2.rows() - 1) = (cornerVert + (vert + (cornerVert - vert).normalized() * originalLength)) / 2 -
+    //         //     //                         newCenter;
+    //         //     // V2.row(V2.rows() - 1) = cornerVert - newCenter;
+    //         //     // V2.row(V2.rows() - 1) = mesh_data.V.row(corner).transpose() - ogCenter;
+    //         //     // std::cout << ogCenter << std::endl;
+    //         //     // std::cout << newCenter << std::endl;
+    //         //     // std::cout << mesh_data.V.row(corner) << std::endl;
+    //         //     // std::cout << cornerVert << std::endl;
+    //         // }
+    //     }
+    //
+    //     //V1.row(j) = ; original
+    //     //V2.row(j) = ; current
+    //     // }
+    //     Eigen::Matrix3d s = V1.transpose() * V2;
+    //     for (int x = 0; x < 3; x++) {
+    //         for (int y = 0; y < 3; y++) {
+    //             S(x * mesh_data.F.rows() + i, y) = s(x, y);
+    //         }
+    //     }
+    // }
     S /= S.array().abs().maxCoeff();
 
 
     const int Rdim = 3;
-    MatrixXd R(Rdim, 3 * mesh_data.F.rows());
+    MatrixXd R(Rdim, 3 * mesh_data.V.rows());
     igl::fit_rotations(S, true, R);
 
 
-    N = Eigen::MatrixXd::Zero(mesh_data.F.rows(), mesh_data.V.rows() * 3);
-    for (int i = 0; i < mesh_data.F.rows(); i++) {
-        Matrix3d rot1 = R.block<3, 3>(0, i * 3);
-        Eigen::Vector3d normal = (rot1 * data.Polygons.row(i).head(3).transpose()).normalized();
-        mesh_data.Polygons(i, 0) = normal(0);
-        mesh_data.Polygons(i, 1) = normal(1);
-        mesh_data.Polygons(i, 2) = normal(2);
-        // Eigen::Vector3d normal = mesh_data.Polygons.row(i).head(3);
-        int size = faceSize(mesh_data.F.row(i));
-        for (int j = 0; j < size; j++) {
-            int vert = mesh_data.F(i, j);
-            N.block<1, 3>(i, 3 * vert) = normal.transpose() / size;
-        }
-    }
+    // 1-degree rotation matrix around Z-axis
 
 
-    NInv = N.completeOrthogonalDecomposition().pseudoInverse();
+    //N = Eigen::MatrixXd::Zero(mesh_data.F.rows(), mesh_data.V.rows() * 3);
+    // for (int i = 0; i < mesh_data.F.rows(); i++) {
+    //     Matrix3d rot1 = R.block<3, 3>(0, i * 3);
+    //     // if (i == 1) {
+    //     //     rot1 = rotationMatrix;
+    //     // }
+    //     // Matrix3d rot1 = rotationMatrix;
+    //     Eigen::Vector3d normal = data.Polygons.row(i).head(3);
+    //     normal = (rot1 * normal).normalized();
+    //     mesh_data.Polygons(i, 0) = normal(0);
+    //     mesh_data.Polygons(i, 1) = normal(1);
+    //     mesh_data.Polygons(i, 2) = normal(2);
+    //     // Eigen::Vector3d normal = mesh_data.Polygons.row(i).head(3);
+    //     int size = faceSize(mesh_data.F.row(i));
+    //     for (int j = 0; j < size; j++) {
+    //         int vert = mesh_data.F(i, j);
+    //         N.block<1, 3>(i, 3 * vert) = normal.transpose() / size;
+    //     }
+    // }
+
+
+    // NInv = N.completeOrthogonalDecomposition().pseudoInverse();
     Eigen::MatrixXd M = data.L * NInv;
 
     std::vector<int> gons;
@@ -274,18 +385,35 @@ bool plane_arap_solve(
         if (data.positions[i * 3] < 0) {
             continue;
         }
-        Matrix3d vRot = Matrix3d::Zero();
+        Eigen::Matrix3d rot = R.block<3, 3>(0, i * 3);
+        // Matrix3d vRot = Matrix3d::Zero();
         Eigen::Vector3d rightSide = Eigen::Vector3d::Zero();
-        for (auto p: mesh_data.VertPolygons[i]) {
-            Eigen::Matrix3d rot = R.block<3, 3>(0, p * 3);
-            vRot += rot / 3;
-        }
+        // std::map<int, std::set<int> > vertContr;
+        // for (auto p: mesh_data.VertPolygons[i]) {
+        //     Eigen::Matrix3d rot = R.block<3, 3>(0, p * 3);
+        //     // if (p == 1) {
+        //     //     rot = rotationMatrix;
+        //     // }
+        //     // Eigen::Matrix3d rot = rotationMatrix;
+        //     int size = faceSize(mesh_data.F.row(p));
+        //     for (int v = 0; v < size; v++) {
+        //         if (mesh_data.F(p, (v + 1) % size) == i) {
+        //             int before = mesh_data.F(p, v);
+        //             int after = mesh_data.F(p, (v + 2) % size);
+        //             rightSide -= 0.5 * (rot * (mesh_data.V.row(before) - mesh_data.V.row(i)).transpose());
+        //             rightSide -= 0.5 * (rot * (mesh_data.V.row(after) - mesh_data.V.row(i)).transpose());
+        //         }
+        //     }
+        //     //vRot += rot / 3;
+        // }
+
         for (auto v: mesh_data.Hoods[i]) {
             // if (data.positions[v * 3] < 0) {
             //     // rightSide += mesh_data.V.row(i);
             //     rightSide += bc.row(-(data.positions[v * 3] + 1)).transpose();
             // }
-            rightSide -= vRot * (mesh_data.V.row(v) - mesh_data.V.row(i)).transpose();
+            //Eigen::Vector3d vec = (mesh_data.V.row(v) - mesh_data.V.row(i)).transpose();
+            rightSide -= rot * (mesh_data.V.row(v) - mesh_data.V.row(i)).transpose();
         }
         for (int j = 0; j < gons.size(); j++) {
             int deletedPoly = gons[j];

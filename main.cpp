@@ -396,7 +396,8 @@ int main(int argc, char *argv[]) {
 
 
     Eigen::VectorXi conP(2);
-    conP << 0, 12;
+    // conP << 0, 12;
+    conP << 0, 7;
     Eigen::MatrixXd lagrangeMultipliers = Eigen::MatrixXd::Zero(conP.size(), 4);
     Eigen::MatrixXd constraints(conP.size(), 3);
     for (int i = 0; i < conP.size(); i++) {
