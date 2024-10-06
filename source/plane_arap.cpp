@@ -40,8 +40,10 @@ bool plane_arap_precomputation(
     const Eigen::VectorXi &b) {
     using namespace std;
     using namespace Eigen;
+    std::cout << b << std::endl;
     // number of vertices
     const int n = mesh_data.V.rows();
+    data.positions.clear();
 
     int mapTo = 0;
     for (int i = 0; i < mesh_data.V.rows(); i++) {
@@ -173,14 +175,10 @@ bool plane_arap_solve(
     //
     //test end
 
-    double theta = 30.0 * M_PI / 180.0;
-    Eigen::Matrix3d rotationMatrix;
-    rotationMatrix << std::cos(theta), -std::sin(theta), 0,
-            std::sin(theta), std::cos(theta), 0,
-            0, 0, 1;
 
-    MatrixXd S(mesh_data.V.rows() * 3, 3);
+    //MatrixXd S(mesh_data.V.rows() * 3, 3);
 
+    MatrixXd R(3, 3 * mesh_data.V.rows());
 
     for (int i = 0; i < mesh_data.V.rows(); i++) {
         Eigen::MatrixXd V1 = Eigen::MatrixXd::Zero(mesh_data.Hoods[i].size(), 3);
@@ -198,21 +196,22 @@ bool plane_arap_solve(
 
             j++;
         }
-        Eigen::Matrix3d s = V1.transpose() * V2;
+        Eigen::Matrix3d s = V2.transpose() * V1;
+        Eigen::Matrix3d rot = getRotation(V1, V2);
+        R.block<3, 3>(0, i * 3) = rot;
+
         // std::cout << V1 << std::endl;
         // std::cout << V2 << std::endl;
-        for (int x = 0; x < 3; x++) {
-            for (int y = 0; y < 3; y++) {
-                S(x * mesh_data.V.rows() + i, y) = s(x, y);
-            }
-        }
+        // for (int x = 0; x < 3; x++) {
+        //     for (int y = 0; y < 3; y++) {
+        //         S(x * mesh_data.V.rows() + i, y) = s(x, y);
+        //     }
+        // }
     }
-    S /= S.array().abs().maxCoeff();
+    // S /= S.array().abs().maxCoeff();
 
 
-    const int Rdim = 3;
-    MatrixXd R(Rdim, 3 * mesh_data.V.rows());
-    igl::fit_rotations(S, true, R);
+    // igl::fit_rotations(S, true, R);
 
     // std::cout << R << std::endl;
 
@@ -292,6 +291,11 @@ bool plane_arap_solve(
             newM(x, y) = M(j, i);
         }
         y++;
+    }
+
+    //constraints cover whole mesh
+    if (newM.size() == 0) {
+        return true;
     }
 
     Eigen::VectorXd bestDistances = newM.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b);

@@ -39,4 +39,22 @@ bool plane_arap_solve(
     plane_arap_data &data);
 
 
+template<class T>
+Eigen::Matrix3<T> getRotation(Eigen::MatrixX<T> v1, Eigen::MatrixX<T> v2) {
+    Eigen::Matrix3<T> S = v2.transpose() * v1;
+    Eigen::JacobiSVD<Eigen::Matrix3<T> > svd(S, Eigen::ComputeFullV | Eigen::ComputeFullU);
+    Eigen::Matrix3<T> U = svd.matrixU();
+    Eigen::Matrix3<T> V = svd.matrixV();
+    Eigen::Matrix3<T> Rot = U * V.transpose();
+
+    if (Rot.determinant() < 0) {
+        Eigen::Matrix3<T> I = Eigen::Matrix3<T>::Identity();
+        I(2, 2) = -1;
+        Rot = U * I * V.transpose();
+    }
+
+    return Rot;
+}
+
+
 #endif //PLANE_ARAP_H
