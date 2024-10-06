@@ -731,10 +731,11 @@ int main(int argc, char *argv[]) {
 
             Eigen::Vector4f startPointHom(startPoint(0), startPoint(1), startPoint(2), 1.0f);
             Eigen::Vector4f startPointView = modelView * startPointHom;
-            startPointView(0) = startPointView(0) + (5.5 * (x - startX) / viewer.core().viewport(2));
-            startPointView(1) = startPointView(1) + (5.5 * ((y - startY)) / viewer.core().viewport(2));
+            double w = (viewer.core().proj * startPointView)(3);
+            startPointView(0) = startPointView(0) + (0.8 * w * (x - startX) / viewer.core().viewport(3));
+            startPointView(1) = startPointView(1) + (0.8 * w * ((y - startY)) / viewer.core().viewport(3));
             std::cout << "viweport" << std::endl;
-            std::cout << startPointView << std::endl;
+            std::cout << w << std::endl;
             std::cout << "end viewport" << std::endl;
             Eigen::Matrix4f modelViewInv = modelView.inverse();
             Eigen::Vector4f backToWorld = modelViewInv * startPointView;
