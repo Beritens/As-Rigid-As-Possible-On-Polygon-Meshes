@@ -48,7 +48,6 @@ Eigen::MatrixXd originalPolygons;
 //Neighbourhood of Polygon
 //Neighbourhood Verts
 Eigen::MatrixXd Verts;
-Eigen::MatrixXd Vf;
 Eigen::MatrixXi Ff;
 Eigen::MatrixXd V;
 Eigen::MatrixXi F;
@@ -131,7 +130,6 @@ namespace std {
 void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &poly) {
     using namespace Eigen;
     int v = 0;
-    Vf.resize(mesh_data.V.rows(), 3);
     // for (int i = 0; i < 6; i++) {
     //     viewer.data().add_points(points.row(i), Eigen::RowVector3d(1, 0, 0));
     // }
@@ -141,10 +139,11 @@ void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &po
         for (auto pol: mesh_data.VertPolygons[i]) {
             pols.push_back(poly.row(pol));
         }
-        Vf.row(i) = getPoint<double>(pols[0], pols[1], pols[2]);
+        mesh_data.V.row(i) = getPoint<double>(pols[0], pols[1], pols[2]);
         v++;
     }
-    viewer.data().set_mesh(Vf, F);
+    calculateTriangles(mesh_data);
+    viewer.data().set_mesh(mesh_data.V, mesh_data.T);
 }
 
 
@@ -316,7 +315,7 @@ int main(int argc, char *argv[]) {
     Eigen::MatrixXi polyF;
 
 
-    happly::PLYData plyIn("../test.ply");
+    happly::PLYData plyIn("../blocks.ply");
     std::vector<std::array<double, 3> > vPos = plyIn.getVertexPositions();
     std::vector<std::vector<size_t> > fInd = plyIn.getFaceIndices<size_t>();
     V.conservativeResize(vPos.size(), 3);
@@ -398,6 +397,8 @@ int main(int argc, char *argv[]) {
             // Verts.resize(connections.rows(), 3);
             // Pre-compute stuff
             // cotanWeights.resize(V.rows(), V.rows());
+
+            Eigen::MatrixXd originalV = mesh_data.V;
 
 
             // U = centers;
@@ -482,7 +483,7 @@ int main(int argc, char *argv[]) {
                                           polygons.push_back(pol);
                                       }
                                       Eigen::Vector3<T> vert = getPoint<T>(polygons[0], polygons[1], polygons[2]);
-                                      Eigen::Vector3d ogVert = mesh_data.V.row(v_idx);
+                                      Eigen::Vector3d ogVert = originalV.row(v_idx);
                                       std::vector<Eigen::Vector3<T> > points;
 
                                       for (auto neighbor: mesh_data.Hoods[v_idx]) {
@@ -506,7 +507,7 @@ int main(int argc, char *argv[]) {
                                       Eigen::MatrixXd V1(points.size(), 3);
                                       Eigen::MatrixX<T> V2(points.size(), 3);
                                       for (auto neighor: mesh_data.Hoods[v_idx]) {
-                                          Eigen::Vector3d ogNeighbor = mesh_data.V.row(neighor);
+                                          Eigen::Vector3d ogNeighbor = originalV.row(neighor);
                                           V1.row(i) = ogNeighbor - ogVert;
                                           V2.row(i) = points[i] - vert;
 
@@ -518,7 +519,7 @@ int main(int argc, char *argv[]) {
                                       T returnValue = 0;
                                       i = 0;
                                       for (auto neighor: mesh_data.Hoods[v_idx]) {
-                                          Eigen::Vector3d ogNeighbor = mesh_data.V.row(neighor);
+                                          Eigen::Vector3d ogNeighbor = originalV.row(neighor);
                                           Eigen::Vector3d v = ogNeighbor - ogVert;
                                           Eigen::Vector3<T> tv = points[i] - vert;
 
@@ -580,7 +581,6 @@ int main(int argc, char *argv[]) {
                 x = func.x_from_data([&](int v_idx) {
                     return mesh_data.Polygons.row(v_idx);
                 });
-                Polygons = mesh_data.Polygons;
 
                 auto [f, g, H_proj] = func.eval_with_hessian_proj(x);
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
@@ -605,29 +605,32 @@ int main(int argc, char *argv[]) {
                 });
 
 
-                // for (int conIdx = 0; conIdx < conP.size(); conIdx++) {
-                //     Eigen::Vector4d vecs[3];
-                //     int j = 0;
-                //     for (auto k: mesh_data.VertPolygons[conP(conIdx)]) {
-                //         vecs[j] = mesh_data.Polygons.row(k);
-                //         j++;
-                //     }
-                //     Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
-                //     Eigen::Vector3d normal2 = vecs[1].head(3).normalized();
-                //     Eigen::Vector3d normal3 = vecs[2].head(3).normalized();
-                //
-                //     Eigen::Matrix3d normM;
-                //     normM.row(0) = normal1;
-                //     normM.row(1) = normal2;
-                //     normM.row(2) = normal3;
-                //
-                //     Eigen::Vector3d dist = normM * constraints.row(conIdx).transpose();
-                //     j = 0;
-                //     for (auto k: mesh_data.VertPolygons[conP(conIdx)]) {
-                //         mesh_data.Polygons(k, 3) = dist(j);
-                //         j++;
-                //     }
-                // }
+                for (int conIdx = 0; conIdx < conP.size(); conIdx++) {
+                    Eigen::Vector4d vecs[3];
+                    int j = 0;
+                    for (auto k: mesh_data.VertPolygons[conP(conIdx)]) {
+                        vecs[j] = mesh_data.Polygons.row(k);
+                        j++;
+                    }
+                    Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
+                    Eigen::Vector3d normal2 = vecs[1].head(3).normalized();
+                    Eigen::Vector3d normal3 = vecs[2].head(3).normalized();
+
+                    Eigen::Matrix3d normM;
+                    normM.row(0) = normal1;
+                    normM.row(1) = normal2;
+                    normM.row(2) = normal3;
+
+                    Eigen::Vector3d dist = normM * constraints.row(conIdx).transpose();
+                    j = 0;
+                    for (auto k: mesh_data.VertPolygons[conP(conIdx)]) {
+                        mesh_data.Polygons(k, 3) = dist(j);
+                        j++;
+                    }
+                }
+
+
+                Polygons = mesh_data.Polygons;
                 // x = func.x_from_data([&](int v_idx) {
                 //     return mesh_data.Polygons.row(v_idx);
                 // });
@@ -673,7 +676,7 @@ int main(int argc, char *argv[]) {
         double x = viewer.current_mouse_x;
         double y = viewer.core().viewport(3) - viewer.current_mouse_y;
         if (igl::unproject_onto_mesh(Eigen::Vector2f(x, y), viewer.core().view,
-                                     viewer.core().proj, viewer.core().viewport, Vf, F, fid, bc)) {
+                                     viewer.core().proj, viewer.core().viewport, mesh_data.V, F, fid, bc)) {
             int v_idx = F(fid, 0);
             float max = 0;
             for (int i = 0; i < 3; i++) {
@@ -692,7 +695,7 @@ int main(int argc, char *argv[]) {
                 tempConP(tempConP.size() - 1) = v_idx;
                 tempConstraints.conservativeResize(tempConP.size(), 3);
                 for (int j = 0; j < tempConP.size(); j++) {
-                    tempConstraints.row(j) = Vf.row(tempConP(j));
+                    tempConstraints.row(j) = mesh_data.V.row(tempConP(j));
                 } {
                     std::lock_guard<std::mutex> lock(m2);
                     newCons = true;

@@ -8,6 +8,7 @@
 struct plane_arap_data {
     Eigen::MatrixXd L;
     Eigen::MatrixXd Polygons;
+    Eigen::MatrixXd V;
     Eigen::VectorXi b;
     std::vector<int> positions;
 };

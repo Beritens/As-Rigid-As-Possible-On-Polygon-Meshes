@@ -94,6 +94,7 @@ bool plane_arap_precomputation(
     data.L = L;
     data.Polygons = mesh_data.Polygons;
     data.b = b;
+    data.V = mesh_data.V;
     return true;
 }
 
@@ -105,7 +106,7 @@ bool plane_arap_solve(
     using namespace Eigen;
     using namespace std;
     // std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    const int n = mesh_data.V.rows();
+    const int n = data.V.rows();
     // Eigen::MatrixXd N = Eigen::MatrixXd::Zero(mesh_data.F.rows(), mesh_data.V.rows() * 3);
     // for (int i = 0; i < mesh_data.F.rows(); i++) {
     //     Eigen::Vector3d normal = mesh_data.Polygons.row(i).head(3).normalized();
@@ -123,9 +124,9 @@ bool plane_arap_solve(
     std::vector<Eigen::MatrixXd> invNs;
     std::vector<std::vector<int> > nIdx;
 
-    Eigen::VectorXd nV(mesh_data.V.rows() * 3);
+    Eigen::VectorXd nV(data.V.rows() * 3);
 
-    for (int i = 0; i < mesh_data.V.rows(); i++) {
+    for (int i = 0; i < data.V.rows(); i++) {
         std::set<int> polygons = mesh_data.VertPolygons[i];
         MatrixXd N(polygons.size(), 3);
         Eigen::VectorXd ds(polygons.size());
@@ -145,7 +146,7 @@ bool plane_arap_solve(
         nIdx.push_back(idx);
     }
 
-    Eigen::MatrixXd NInv = Eigen::MatrixXd::Zero(mesh_data.V.rows() * 3, mesh_data.Polygons.rows());
+    Eigen::MatrixXd NInv = Eigen::MatrixXd::Zero(data.V.rows() * 3, mesh_data.Polygons.rows());
     for (int i = 0; i < nIdx.size(); i++) {
         for (int j = 0; j < 3; j++) {
             for (int k = 0; k < nIdx[i].size(); k++) {
@@ -178,17 +179,17 @@ bool plane_arap_solve(
 
     //MatrixXd S(mesh_data.V.rows() * 3, 3);
 
-    MatrixXd R(3, 3 * mesh_data.V.rows());
+    MatrixXd R(3, 3 * data.V.rows());
 
-    for (int i = 0; i < mesh_data.V.rows(); i++) {
+    for (int i = 0; i < data.V.rows(); i++) {
         Eigen::MatrixXd V1 = Eigen::MatrixXd::Zero(mesh_data.Hoods[i].size(), 3);
         Eigen::MatrixXd V2 = Eigen::MatrixXd::Zero(mesh_data.Hoods[i].size(), 3);
 
-        Eigen::Vector3d originalVert = mesh_data.V.row(i);
+        Eigen::Vector3d originalVert = data.V.row(i);
         Eigen::Vector3d newVert = nV.segment(3 * i, 3);
         int j = 0;
         for (auto v: mesh_data.Hoods[i]) {
-            Eigen::Vector3d originalNeighbor = mesh_data.V.row(v);
+            Eigen::Vector3d originalNeighbor = data.V.row(v);
             Eigen::Vector3d newNeighbor = nV.segment(3 * v, 3);
 
             V1.row(j) += originalVert - originalNeighbor;
@@ -247,9 +248,9 @@ bool plane_arap_solve(
     }
 
 
-    Eigen::VectorXd b(3 * mesh_data.V.rows() - 3 * data.b.size());
+    Eigen::VectorXd b(3 * data.V.rows() - 3 * data.b.size());
     int row = 0;
-    for (int i = 0; i < mesh_data.V.rows(); i++) {
+    for (int i = 0; i < data.V.rows(); i++) {
         if (data.positions[i * 3] < 0) {
             continue;
         }
@@ -257,7 +258,7 @@ bool plane_arap_solve(
         Eigen::Vector3d rightSide = Eigen::Vector3d::Zero();
 
         for (auto v: mesh_data.Hoods[i]) {
-            rightSide -= rot * (mesh_data.V.row(v) - mesh_data.V.row(i)).transpose();
+            rightSide -= rot * (data.V.row(v) - data.V.row(i)).transpose();
         }
         for (int j = 0; j < gons.size(); j++) {
             int deletedPoly = gons[j];

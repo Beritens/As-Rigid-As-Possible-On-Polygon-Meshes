@@ -45,6 +45,8 @@ igl_include(imgui)
 #igl_include(restricted triangle)
 
 # Add your project files
+
+include_directories("sourceC/")
 include_directories("include/")
 file(GLOB SRCFILES source/*.cpp)
 message(STATUS "Source files: ${SRCFILES}")
@@ -52,14 +54,17 @@ message(STATUS "Source files: ${SRCFILES}")
 
 add_library(srcfiles ${SRCFILES}
         source/plane_arap.cpp
-        include/plane_arap.h)
+        include/plane_arap.h
+)
 target_link_libraries(srcfiles igl::core igl::glfw)
 
 add_executable(deformation "main.cpp"
         happly.h
         include/custom_data.h
         include/poly_mesh_data.h
-        include/plane_arap_data.h)
+        include/plane_arap_data.h
+        include/earcut.hpp
+)
 
 
 # Link igl (and the glfw module) to your project

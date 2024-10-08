@@ -8,11 +8,14 @@
 #include <set>
 #include <vector>
 #include <Eigen/Geometry>
+#include "earcut.hpp"
 
 
 struct poly_mesh_data {
     Eigen::MatrixXd V;
     Eigen::MatrixXi F;
+    Eigen::MatrixXi T;
+    int triangleCount;
     Eigen::MatrixXd Polygons;
     std::map<int, std::vector<int> > Hoods;
     std::map<int, std::set<int> > VertPolygons;
@@ -69,10 +72,12 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, Eigen
     data.F = F;
     calculatePolygons(data);
     std::map<int, std::set<int> > tempHoods;
+    data.triangleCount = 0;
 
     //get neighbours
     for (int i = 0; i < F.rows(); i++) {
         const int size = faceSize(F.row(i));
+        data.triangleCount += size - 2;
         for (int j = 0; j < size; j++) {
             const int k = (j + 1) % size;
             tempHoods[F(i, j)].insert(F(i, k));
@@ -80,6 +85,7 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, Eigen
             data.VertPolygons[F(i, j)].insert(i);
         }
     }
+    data.T = Eigen::MatrixXi(data.triangleCount, 3);
 
     for (int i = 0; i < V.size(); i++) {
         int curr = *(tempHoods[i].begin());
@@ -114,6 +120,64 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, Eigen
                     break;
                 }
             }
+        }
+    }
+}
+
+inline std::vector<std::vector<int> > calculateTriangle(std::vector<Eigen::Vector3d> verts, Eigen::Vector3d normal) {
+    int n = verts.size();
+    Eigen::Vector3d a = (verts[1] - verts[0]).normalized();
+    Eigen::Vector3d b = -(a.cross(normal)).normalized();
+    Eigen::Matrix<double, 2, 3> M;
+    M.row(0) = a;
+    M.row(1) = b;
+    double x[verts.size()];
+    double y[verts.size()];
+    using Point = std::array<double, 2>;
+    std::vector<Point> poly;
+    std::vector<std::vector<Point> > polygon;
+    for (int i = 0; i < n; i++) {
+        Eigen::Vector2d onPlane = M * (verts[i] - verts[0]);
+        poly.push_back({onPlane(0), onPlane(1)});
+    }
+    polygon.push_back(poly);
+
+    //int *tris = polygon_triangulate(n, x, y);
+    std::vector<int> indices = mapbox::earcut<int>(polygon);
+    std::vector<std::vector<int> > triangles;
+    for (int i = 0; i < (n - 2); i++) {
+        std::vector<int> t;
+        for (int j = 0; j < 3; j++) {
+            t.push_back(indices[i * 3 + j]);
+        }
+        triangles.push_back(t);
+    }
+    return triangles;
+}
+
+inline void calculateTriangles(poly_mesh_data &mesh_data) {
+    int t = 0;
+    for (int i = 0; i < mesh_data.F.rows(); i++) {
+        int size = faceSize(mesh_data.F.row(i));
+        std::vector<Eigen::Vector3d> verts;
+        for (int j = 0; j < size; j++) {
+            int v_idx = mesh_data.F(i, j);
+            verts.push_back(mesh_data.V.row(v_idx));
+        }
+        try {
+            std::vector<std::vector<int> > triangles = calculateTriangle(verts, mesh_data.Polygons.row(i).head(3));
+            for (auto tri: triangles) {
+                for (int j = 0; j < 3; j++) {
+                    if (tri[j] < 0 || tri[j] >= size) {
+                        continue;
+                    }
+                    mesh_data.T(t, j) = mesh_data.F(i, tri[j]);
+                }
+                t++;
+            }
+        } catch (...) {
+            std::cout << "negative area" << std::endl;
+            t += size - 2;
         }
     }
 }
