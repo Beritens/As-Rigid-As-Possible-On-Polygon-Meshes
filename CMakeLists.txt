@@ -56,6 +56,8 @@ add_library(srcfiles ${SRCFILES}
         source/plane_arap.cpp
         include/plane_arap.h
 )
+
+target_link_libraries(srcfiles TinyAD)
 target_link_libraries(srcfiles igl::core igl::glfw)
 
 add_executable(deformation "main.cpp"

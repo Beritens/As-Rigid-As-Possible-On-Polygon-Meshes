@@ -34,6 +34,26 @@ void removeColumn(Eigen::MatrixXd &matrix, unsigned int colToRemove) {
 template<typename Scalar>
 using MatrixXX = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>;
 
+void insertInL(Eigen::MatrixXd &L, int v1, int v2, double cot) {
+    int a = 3 * v1;
+    int b = 3 * v2;
+    L(a, b) -= cot;
+    L(a + 1, b + 1) -= cot;
+    L(a + 2, b + 2) -= cot;
+
+    L(b, a) -= cot;
+    L(b + 1, a + 1) -= cot;
+    L(b + 2, a + 2) -= cot;
+
+    L(a, a) += cot;
+    L(a + 1, a + 1) += cot;
+    L(a + 2, a + 2) += cot;
+
+    L(b, b) += cot;
+    L(b + 1, b + 1) += cot;
+    L(b + 2, b + 2) += cot;
+}
+
 bool plane_arap_precomputation(
     poly_mesh_data &mesh_data,
     plane_arap_data &data,
@@ -70,36 +90,80 @@ bool plane_arap_precomputation(
         }
     }
 
+
+    data.cotanWeights.resize(mesh_data.V.rows());
+
+    for (int i = 0; i < mesh_data.V.rows(); i++) {
+        for (int j = 0; j < mesh_data.Hoods[i].size(); j++) {
+            int next = (j + 1) % mesh_data.Hoods[i].size();
+            Eigen::Vector3d v_a = mesh_data.V.row(i);
+            Eigen::Vector3d v_b = mesh_data.V.row(mesh_data.Hoods[i][j]);
+            Eigen::Vector3d v_c = mesh_data.V.row(mesh_data.Hoods[i][next]);
+
+            double angleA = getAngle(v_b - v_a, v_c - v_a);
+            double angleB = getAngle(v_b - v_c, v_a - v_c);
+            double angleC = getAngle(v_c - v_b, v_c - v_b);
+
+            data.cotanWeights[i].push_back(1.0 / tan(angleA));
+            data.cotanWeights[i].push_back(1.0 / tan(angleB));
+            data.cotanWeights[i].push_back(1.0 / tan(angleC));
+        }
+    }
+
     Eigen::MatrixXd L = Eigen::MatrixXd::Zero(3 * mesh_data.V.rows(),
                                               3 * mesh_data.V.rows());
     for (int i = 0; i < mesh_data.V.rows(); i++) {
         std::vector val = mesh_data.Hoods[i];
         int size = val.size();
-        int v = i * 3;
-        L(v, v) = size;
-        L(v + 1, v + 1) = size;
-        L(v + 2, v + 2) = size;
-        for (auto j: val) {
-            //int v2 = data.positions[j * 3];
-            int v2 = j * 3;
-            if (v2 < 0) {
-                continue;
-            }
-            L(v, v2) = -1;
-            L(v + 1, v2 + 1) = -1;
-            L(v + 2, v2 + 2) = -1;
+
+        for (int j = 0; j < size; j++) {
+            int next = (j + 1) % size;
+            int n1 = mesh_data.Hoods[i][j];
+            int n2 = mesh_data.Hoods[i][next];
+            insertInL(L, i, n1, data.cotanWeights[i][j * 3 + 2]);
+            insertInL(L, i, n2, data.cotanWeights[i][j * 3 + 1]);
+            insertInL(L, n1, n2, data.cotanWeights[i][j * 3]);
         }
+
+        // for (auto j: val) {
+        //     int v2 = j * 3;
+        //     if (v2 < 0) {
+        //         continue;
+        //     }
+        //     L(v, v2) = -1;
+        //     L(v + 1, v2 + 1) = -1;
+        //     L(v + 2, v2 + 2) = -1;
+        // }
+        // L(v, v) = size;
+        // L(v + 1, v + 1) = size;
+        // L(v + 2, v + 2) = size;
     }
 
     data.L = L;
+    std::cout << "L" << std::endl;
+    std::cout << L << std::endl;
     data.Polygons = mesh_data.Polygons;
     data.b = b;
     data.V = mesh_data.V;
     return true;
 }
 
+void insertInB(Eigen::VectorXd &b, int v1, int v2, double cot, const Eigen::MatrixXd V, const Eigen::Matrix3d rot) {
+    Eigen::Vector3d rightSide = cot * (rot * (V.row(v2) - V.row(v1)).transpose());
 
-bool plane_arap_solve(
+    int p1 = v1;
+    int p2 = v2;
+    b(p1 * 3) -= rightSide(0);
+    b(p1 * 3 + 1) -= rightSide(1);
+    b(p1 * 3 + 2) -= rightSide(2);
+
+    b(p2 * 3) += rightSide(0);
+    b(p2 * 3 + 1) += rightSide(1);
+    b(p2 * 3 + 2) += rightSide(2);
+}
+
+
+bool global_distance_step(
     const Eigen::MatrixXd &bc,
     poly_mesh_data &mesh_data,
     plane_arap_data &data) {
@@ -197,6 +261,8 @@ bool plane_arap_solve(
 
             j++;
         }
+
+
         Eigen::Matrix3d s = V2.transpose() * V1;
         Eigen::Matrix3d rot = getRotation(V1, V2);
         R.block<3, 3>(0, i * 3) = rot;
@@ -248,31 +314,45 @@ bool plane_arap_solve(
     }
 
 
-    Eigen::VectorXd b(3 * data.V.rows() - 3 * data.b.size());
+    Eigen::VectorXd b = Eigen::VectorXd::Zero(3 * data.V.rows());
+
+    for (int i = 0; i < mesh_data.V.rows(); i++) {
+        std::vector val = mesh_data.Hoods[i];
+        int size = val.size();
+
+        Eigen::Matrix3d rot = R.block<3, 3>(0, i * 3);
+
+        for (int j = 0; j < size; j++) {
+            int next = (j + 1) % size;
+            int n1 = mesh_data.Hoods[i][j];
+            int n2 = mesh_data.Hoods[i][next];
+            insertInB(b, i, n1, data.cotanWeights[i][j * 3 + 2], data.V, rot);
+            insertInB(b, i, n2, data.cotanWeights[i][j * 3 + 1], data.V, rot);
+            insertInB(b, n1, n2, data.cotanWeights[i][j * 3], data.V, rot);
+        }
+    }
+
     int row = 0;
     for (int i = 0; i < data.V.rows(); i++) {
-        if (data.positions[i * 3] < 0) {
-            continue;
-        }
-        Eigen::Matrix3d rot = R.block<3, 3>(0, i * 3);
+        // Eigen::Matrix3d rot = R.block<3, 3>(0, i * 3);
         Eigen::Vector3d rightSide = Eigen::Vector3d::Zero();
 
-        for (auto v: mesh_data.Hoods[i]) {
-            rightSide -= rot * (data.V.row(v) - data.V.row(i)).transpose();
-        }
+        // for (auto v: mesh_data.Hoods[i]) {
+        //     rightSide -= rot * (data.V.row(v) - data.V.row(i)).transpose();
+        // }
         for (int j = 0; j < gons.size(); j++) {
             int deletedPoly = gons[j];
             rightSide(0) -= M(3 * i, deletedPoly) * dists[j];
             rightSide(1) -= M(3 * i + 1, deletedPoly) * dists[j];
             rightSide(2) -= M(3 * i + 2, deletedPoly) * dists[j];
         }
-        b(row * 3) = rightSide(0);
-        b(row * 3 + 1) = rightSide(1);
-        b(row * 3 + 2) = rightSide(2);
+        b(row * 3) += rightSide(0);
+        b(row * 3 + 1) += rightSide(1);
+        b(row * 3 + 2) += rightSide(2);
         row++;
     }
 
-    Eigen::MatrixXd newM(M.rows() - 3 * data.b.size(), M.cols() - dists.size());
+    Eigen::MatrixXd newM(M.rows(), M.cols() - dists.size());
     int y = 0;
     for (int i = 0; i < M.cols(); i++) {
         bool deltedCol = false;
@@ -285,10 +365,7 @@ bool plane_arap_solve(
             continue;
         }
         for (int j = 0; j < M.rows(); j++) {
-            int x = data.positions[j];
-            if (x < 0) {
-                continue;
-            }
+            int x = j;
             newM(x, y) = M(j, i);
         }
         y++;
@@ -318,4 +395,129 @@ bool plane_arap_solve(
     }
 
     return true;
+}
+
+TinyAD::ScalarFunction<4, double, long> getFunction(
+    const Eigen::MatrixXd &bc,
+    poly_mesh_data &mesh_data,
+    plane_arap_data &data) {
+    auto func = TinyAD::scalar_function<4>(TinyAD::range(data.Polygons.rows()));
+
+    func.add_elements<10>(TinyAD::range(mesh_data.V.rows()),
+                          [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
+                              //calculate arap energy
+                              using T = TINYAD_SCALAR_TYPE(
+
+
+                                  element
+                              );
+                              //TODO: einfach constraint berechnung hier rein packen, dann sollte es ja eig. gehen
+
+                              Eigen::Index v_idx = element.handle;
+                              std::vector<int> localConstrainsIndex;
+                              for (int i = 0; i < data.b.size(); i++) {
+                                  if (v_idx == data.b(i)) {
+                                      localConstrainsIndex.push_back(i);
+                                  }
+                                  for (auto v: mesh_data.Hoods[v_idx]) {
+                                      for (auto p: mesh_data.VertPolygons[v]) {
+                                          int size = faceSize(mesh_data.F.row(p));
+                                          for (int fi = 0; fi < size; fi++) {
+                                              if (mesh_data.F(p, fi) == data.b(i)) {
+                                                  localConstrainsIndex.push_back(i);
+                                              }
+                                          }
+                                      }
+                                  }
+                              }
+
+                              std::map<int, Eigen::Vector4<T> > gons;
+                              for (int i = 0; i < localConstrainsIndex.size(); i++) {
+                                  Eigen::Vector4<T> vecs[3];
+                                  int j = 0;
+                                  for (auto k: mesh_data.VertPolygons[data.b(localConstrainsIndex[i])]) {
+                                      vecs[j] = element.variables(k);
+                                      j++;
+                                  }
+                                  Eigen::Vector3<T> normal1 = vecs[0].head(3).normalized();
+                                  Eigen::Vector3<T> normal2 = vecs[1].head(3).normalized();
+                                  Eigen::Vector3<T> normal3 = vecs[2].head(3).normalized();
+
+                                  Eigen::Matrix3<T> m;
+                                  m.row(0) = normal1;
+                                  m.row(1) = normal2;
+                                  m.row(2) = normal3;
+
+                                  Eigen::Vector3<T> dist =
+                                          m * bc.row(localConstrainsIndex[i]).transpose();
+                                  j = 0;
+                                  for (auto k: mesh_data.VertPolygons[data.b(localConstrainsIndex[i])]) {
+                                      Eigen::Vector4<T> pol = element.variables(k);
+                                      pol(3) = dist(j);
+                                      gons[k] = pol;
+                                      j++;
+                                  }
+                              }
+
+                              std::vector<Eigen::Vector4<T> > polygons;
+                              for (auto f: mesh_data.VertPolygons[v_idx]) {
+                                  Eigen::Vector4<T> pol;
+                                  pol = element.variables(f);
+                                  if (gons.find(f) != gons.end()) {
+                                      pol = gons[f];
+                                  }
+                                  // Eigen::Vector3<T> normal = element.variables(f);
+                                  // pol.head(3) = normal;
+                                  // pol(3) = mesh_data.Polygons(f, 3);
+                                  polygons.push_back(pol);
+                              }
+                              Eigen::Vector3<T> vert = getPoint<T>(polygons[0], polygons[1], polygons[2]);
+                              Eigen::Vector3d ogVert = data.V.row(v_idx);
+                              std::vector<Eigen::Vector3<T> > points;
+
+                              for (auto neighbor: mesh_data.Hoods[v_idx]) {
+                                  std::vector<Eigen::Vector4<T> > neighPolygons;
+                                  for (auto f: mesh_data.VertPolygons[neighbor]) {
+                                      Eigen::Vector4<T> pol;
+                                      pol = element.variables(f);
+                                      if (gons.find(f) != gons.end()) {
+                                          pol = gons[f];
+                                      }
+                                      // Eigen::Vector3<T> normal = element.variables(f);
+                                      // pol.head(3) = normal;
+                                      // pol(3) = mesh_data.Polygons(f, 3);
+                                      neighPolygons.push_back(pol);
+                                  }
+                                  Eigen::Vector3<T> neighborVert = getPoint<T>(
+                                      neighPolygons[0], neighPolygons[1], neighPolygons[2]);
+                                  points.push_back(neighborVert);
+                              }
+                              int i = 0;
+                              Eigen::MatrixXd V1(points.size(), 3);
+                              Eigen::MatrixX<T> V2(points.size(), 3);
+                              for (auto neighor: mesh_data.Hoods[v_idx]) {
+                                  Eigen::Vector3d ogNeighbor = data.V.row(neighor);
+                                  V1.row(i) = ogNeighbor - ogVert;
+                                  V2.row(i) = points[i] - vert;
+
+                                  i++;
+                              }
+
+                              Eigen::Matrix3<T> Rot = getRotation<T>(V1, V2);
+                              //wrong but will fix later
+                              //TODO: fix later
+                              T returnValue = 0;
+                              i = 0;
+                              for (auto neighor: mesh_data.Hoods[v_idx]) {
+                                  Eigen::Vector3d ogNeighbor = data.V.row(neighor);
+                                  Eigen::Vector3d v = ogNeighbor - ogVert;
+                                  Eigen::Vector3<T> tv = points[i] - vert;
+
+                                  returnValue += (tv - Rot * v).squaredNorm();
+
+                                  i++;
+                              }
+                              return returnValue;
+                          });
+    return func;
 }

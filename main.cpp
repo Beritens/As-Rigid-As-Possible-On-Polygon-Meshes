@@ -69,64 +69,6 @@ plane_arap_data plane_arap_data;
 //
 
 
-namespace std {
-    template<int N, typename T, bool B>
-    struct numeric_limits<TinyAD::Scalar<N, T, B> > {
-        static constexpr bool is_specialized = true;
-
-        static TinyAD::Scalar<N, T, B> min() noexcept {
-            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::min()};
-        }
-
-        static TinyAD::Scalar<N, T, B> max() noexcept {
-            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::max()};
-        }
-
-        static TinyAD::Scalar<N, T, B> lowest() noexcept {
-            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::lowest()};
-        }
-
-        static constexpr int digits = std::numeric_limits<T>::digits;
-        static constexpr int digits10 = std::numeric_limits<T>::digits10;
-        static constexpr int max_digits10 = std::numeric_limits<T>::max_digits10;
-
-        static constexpr bool is_signed = std::numeric_limits<T>::is_signed;
-        static constexpr bool is_integer = std::numeric_limits<T>::is_integer;
-        static constexpr bool is_exact = std::numeric_limits<T>::is_exact;
-
-        static constexpr bool has_infinity = std::numeric_limits<T>::has_infinity;
-        static constexpr bool has_quiet_NaN = std::numeric_limits<T>::has_quiet_NaN;
-        static constexpr bool has_signaling_NaN = std::numeric_limits<T>::has_signaling_NaN;
-        static constexpr float_denorm_style has_denorm = std::numeric_limits<T>::has_denorm;
-        static constexpr bool has_denorm_loss = std::numeric_limits<T>::has_denorm_loss;
-
-        static TinyAD::Scalar<N, T, B> infinity() noexcept {
-            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::infinity()};
-        }
-
-        static TinyAD::Scalar<N, T, B> quiet_NaN() noexcept {
-            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::quiet_NaN()};
-        }
-
-        static TinyAD::Scalar<N, T, B> signaling_NaN() noexcept {
-            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::signaling_NaN()};
-        }
-
-        static TinyAD::Scalar<N, T, B> denorm_min() noexcept {
-            return TinyAD::Scalar<N, T, B>{std::numeric_limits<T>::denorm_min()};
-        }
-
-        static constexpr bool is_iec559 = std::numeric_limits<T>::is_iec559;
-        static constexpr bool is_bounded = std::numeric_limits<T>::is_bounded;
-        static constexpr bool is_modulo = std::numeric_limits<T>::is_modulo;
-
-        static constexpr bool traps = std::numeric_limits<T>::traps;
-        static constexpr bool tinyness_before = std::numeric_limits<T>::tinyness_before;
-        static constexpr float_round_style round_style = std::numeric_limits<T>::round_style;
-    };
-}
-
-
 void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &poly) {
     using namespace Eigen;
     int v = 0;
@@ -302,10 +244,6 @@ void precomputeMesh(Eigen::MatrixXi polyF) {
     // std::cout<< centers << std::endl;
 }
 
-double getAngle(Eigen::Vector3d a, Eigen::Vector3d b) {
-    return a.dot(b) / (a.norm() * b.norm());
-}
-
 
 int main(int argc, char *argv[]) {
     using namespace Eigen;
@@ -315,7 +253,7 @@ int main(int argc, char *argv[]) {
     Eigen::MatrixXi polyF;
 
 
-    happly::PLYData plyIn("../blocks.ply");
+    happly::PLYData plyIn("../test.ply");
     std::vector<std::array<double, 3> > vPos = plyIn.getVertexPositions();
     std::vector<std::vector<size_t> > fInd = plyIn.getFaceIndices<size_t>();
     V.conservativeResize(vPos.size(), 3);
@@ -416,120 +354,127 @@ int main(int argc, char *argv[]) {
 
             plane_arap_precomputation(mesh_data, plane_arap_data, b);
 
-            auto func = TinyAD::scalar_function<4>(TinyAD::range(Polygons.rows()));
-
-            func.add_elements<10>(TinyAD::range(mesh_data.V.rows()),
-                                  [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
-                                      //calculate arap energy
-                                      using T = TINYAD_SCALAR_TYPE(element);
-                                      //TODO: einfach constraint berechnung hier rein packen, dann sollte es ja eig. gehen
-
-                                      Eigen::Index v_idx = element.handle;
-                                      std::vector<int> localConstrainsIndex;
-                                      for (int i = 0; i < conP.size(); i++) {
-                                          if (v_idx == conP(i)) {
-                                              localConstrainsIndex.push_back(i);
-                                          }
-                                          for (auto v: mesh_data.Hoods[v_idx]) {
-                                              for (auto p: mesh_data.VertPolygons[v]) {
-                                                  int size = faceSize(mesh_data.F.row(p));
-                                                  for (int fi = 0; fi < size; fi++) {
-                                                      if (mesh_data.F(p, fi) == conP(i)) {
-                                                          localConstrainsIndex.push_back(i);
-                                                      }
-                                                  }
-                                              }
-                                          }
-                                      }
-
-                                      std::map<int, Eigen::Vector4<T> > gons;
-                                      for (int i = 0; i < localConstrainsIndex.size(); i++) {
-                                          Eigen::Vector4<T> vecs[3];
-                                          int j = 0;
-                                          for (auto k: mesh_data.VertPolygons[conP(localConstrainsIndex[i])]) {
-                                              vecs[j] = element.variables(k);
-                                              j++;
-                                          }
-                                          Eigen::Vector3<T> normal1 = vecs[0].head(3).normalized();
-                                          Eigen::Vector3<T> normal2 = vecs[1].head(3).normalized();
-                                          Eigen::Vector3<T> normal3 = vecs[2].head(3).normalized();
-
-                                          Eigen::Matrix3<T> m;
-                                          m.row(0) = normal1;
-                                          m.row(1) = normal2;
-                                          m.row(2) = normal3;
-
-                                          Eigen::Vector3<T> dist =
-                                                  m * constraints.row(localConstrainsIndex[i]).transpose();
-                                          j = 0;
-                                          for (auto k: mesh_data.VertPolygons[conP(localConstrainsIndex[i])]) {
-                                              Eigen::Vector4<T> pol = element.variables(k);
-                                              pol(3) = dist(j);
-                                              gons[k] = pol;
-                                              j++;
-                                          }
-                                      }
-
-                                      std::vector<Eigen::Vector4<T> > polygons;
-                                      for (auto f: mesh_data.VertPolygons[v_idx]) {
-                                          Eigen::Vector4<T> pol;
-                                          pol = element.variables(f);
-                                          if (gons.find(f) != gons.end()) {
-                                              pol = gons[f];
-                                          }
-                                          // Eigen::Vector3<T> normal = element.variables(f);
-                                          // pol.head(3) = normal;
-                                          // pol(3) = mesh_data.Polygons(f, 3);
-                                          polygons.push_back(pol);
-                                      }
-                                      Eigen::Vector3<T> vert = getPoint<T>(polygons[0], polygons[1], polygons[2]);
-                                      Eigen::Vector3d ogVert = originalV.row(v_idx);
-                                      std::vector<Eigen::Vector3<T> > points;
-
-                                      for (auto neighbor: mesh_data.Hoods[v_idx]) {
-                                          std::vector<Eigen::Vector4<T> > neighPolygons;
-                                          for (auto f: mesh_data.VertPolygons[neighbor]) {
-                                              Eigen::Vector4<T> pol;
-                                              pol = element.variables(f);
-                                              if (gons.find(f) != gons.end()) {
-                                                  pol = gons[f];
-                                              }
-                                              // Eigen::Vector3<T> normal = element.variables(f);
-                                              // pol.head(3) = normal;
-                                              // pol(3) = mesh_data.Polygons(f, 3);
-                                              neighPolygons.push_back(pol);
-                                          }
-                                          Eigen::Vector3<T> neighborVert = getPoint<T>(
-                                              neighPolygons[0], neighPolygons[1], neighPolygons[2]);
-                                          points.push_back(neighborVert);
-                                      }
-                                      int i = 0;
-                                      Eigen::MatrixXd V1(points.size(), 3);
-                                      Eigen::MatrixX<T> V2(points.size(), 3);
-                                      for (auto neighor: mesh_data.Hoods[v_idx]) {
-                                          Eigen::Vector3d ogNeighbor = originalV.row(neighor);
-                                          V1.row(i) = ogNeighbor - ogVert;
-                                          V2.row(i) = points[i] - vert;
-
-                                          i++;
-                                      }
-                                      Eigen::Matrix3<T> Rot = getRotation<T>(V1, V2);
-                                      //wrong but will fix later
-                                      //TODO: fix later
-                                      T returnValue = 0;
-                                      i = 0;
-                                      for (auto neighor: mesh_data.Hoods[v_idx]) {
-                                          Eigen::Vector3d ogNeighbor = originalV.row(neighor);
-                                          Eigen::Vector3d v = ogNeighbor - ogVert;
-                                          Eigen::Vector3<T> tv = points[i] - vert;
-
-                                          returnValue += (tv - Rot * v).squaredNorm();
-
-                                          i++;
-                                      }
-                                      return returnValue;
-                                  });
+            // auto func = TinyAD::scalar_function<4>(TinyAD::range(Polygons.rows()));
+            //
+            // func.add_elements < 10 > (TinyAD::range(mesh_data.V.rows()),
+            //                           [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
+            //                               //calculate arap energy
+            //                               using T = TINYAD_SCALAR_TYPE(
+            //
+            //
+            //
+            //                               element
+            //                               )
+            //                               ;
+            //                               //TODO: einfach constraint berechnung hier rein packen, dann sollte es ja eig. gehen
+            //
+            //                               Eigen::Index v_idx = element.handle;
+            //                               std::vector<int> localConstrainsIndex;
+            //                               for (int i = 0; i < conP.size(); i++) {
+            //                                   if (v_idx == conP(i)) {
+            //                                       localConstrainsIndex.push_back(i);
+            //                                   }
+            //                                   for (auto v: mesh_data.Hoods[v_idx]) {
+            //                                       for (auto p: mesh_data.VertPolygons[v]) {
+            //                                           int size = faceSize(mesh_data.F.row(p));
+            //                                           for (int fi = 0; fi < size; fi++) {
+            //                                               if (mesh_data.F(p, fi) == conP(i)) {
+            //                                                   localConstrainsIndex.push_back(i);
+            //                                               }
+            //                                           }
+            //                                       }
+            //                                   }
+            //                               }
+            //
+            //                               std::map<int, Eigen::Vector4<T> > gons;
+            //                               for (int i = 0; i < localConstrainsIndex.size(); i++) {
+            //                                   Eigen::Vector4<T> vecs[3];
+            //                                   int j = 0;
+            //                                   for (auto k: mesh_data.VertPolygons[conP(localConstrainsIndex[i])]) {
+            //                                       vecs[j] = element.variables(k);
+            //                                       j++;
+            //                                   }
+            //                                   Eigen::Vector3<T> normal1 = vecs[0].head(3).normalized();
+            //                                   Eigen::Vector3<T> normal2 = vecs[1].head(3).normalized();
+            //                                   Eigen::Vector3<T> normal3 = vecs[2].head(3).normalized();
+            //
+            //                                   Eigen::Matrix3<T> m;
+            //                                   m.row(0) = normal1;
+            //                                   m.row(1) = normal2;
+            //                                   m.row(2) = normal3;
+            //
+            //                                   Eigen::Vector3<T> dist =
+            //                                           m * constraints.row(localConstrainsIndex[i]).transpose();
+            //                                   j = 0;
+            //                                   for (auto k: mesh_data.VertPolygons[conP(localConstrainsIndex[i])]) {
+            //                                       Eigen::Vector4<T> pol = element.variables(k);
+            //                                       pol(3) = dist(j);
+            //                                       gons[k] = pol;
+            //                                       j++;
+            //                                   }
+            //                               }
+            //
+            //                               std::vector<Eigen::Vector4<T> > polygons;
+            //                               for (auto f: mesh_data.VertPolygons[v_idx]) {
+            //                                   Eigen::Vector4<T> pol;
+            //                                   pol = element.variables(f);
+            //                                   if (gons.find(f) != gons.end()) {
+            //                                       pol = gons[f];
+            //                                   }
+            //                                   // Eigen::Vector3<T> normal = element.variables(f);
+            //                                   // pol.head(3) = normal;
+            //                                   // pol(3) = mesh_data.Polygons(f, 3);
+            //                                   polygons.push_back(pol);
+            //                               }
+            //                               Eigen::Vector3<T> vert = getPoint<T>(polygons[0], polygons[1], polygons[2]);
+            //                               Eigen::Vector3d ogVert = originalV.row(v_idx);
+            //                               std::vector<Eigen::Vector3<T> > points;
+            //
+            //                               for (auto neighbor: mesh_data.Hoods[v_idx]) {
+            //                                   std::vector<Eigen::Vector4<T> > neighPolygons;
+            //                                   for (auto f: mesh_data.VertPolygons[neighbor]) {
+            //                                       Eigen::Vector4<T> pol;
+            //                                       pol = element.variables(f);
+            //                                       if (gons.find(f) != gons.end()) {
+            //                                           pol = gons[f];
+            //                                       }
+            //                                       // Eigen::Vector3<T> normal = element.variables(f);
+            //                                       // pol.head(3) = normal;
+            //                                       // pol(3) = mesh_data.Polygons(f, 3);
+            //                                       neighPolygons.push_back(pol);
+            //                                   }
+            //                                   Eigen::Vector3<T> neighborVert = getPoint<T>(
+            //                                       neighPolygons[0], neighPolygons[1], neighPolygons[2]);
+            //                                   points.push_back(neighborVert);
+            //                               }
+            //                               int i = 0;
+            //                               Eigen::MatrixXd V1(points.size(), 3);
+            //                               Eigen::MatrixX<T> V2(points.size(), 3);
+            //                               for (auto neighor: mesh_data.Hoods[v_idx]) {
+            //                                   Eigen::Vector3d ogNeighbor = originalV.row(neighor);
+            //                                   V1.row(i) = ogNeighbor - ogVert;
+            //                                   V2.row(i) = points[i] - vert;
+            //
+            //                                   i++;
+            //                               }
+            //                               Eigen::Matrix3<T> Rot = getRotation<T>(V1, V2);
+            //                               //wrong but will fix later
+            //                               //TODO: fix later
+            //                               T returnValue = 0;
+            //                               i = 0;
+            //                               for (auto neighor: mesh_data.Hoods[v_idx]) {
+            //                                   Eigen::Vector3d ogNeighbor = originalV.row(neighor);
+            //                                   Eigen::Vector3d v = ogNeighbor - ogVert;
+            //                                   Eigen::Vector3<T> tv = points[i] - vert;
+            //
+            //                                   returnValue += (tv - Rot * v).squaredNorm();
+            //
+            //                                   i++;
+            //                               }
+            //                               return returnValue;
+            //                           });
             // }
+            auto func = getFunction(constraints, mesh_data, plane_arap_data);
 
             // Assemble inital x vector from P matrix.
             // x_from_data(...) takes a lambda function that maps
@@ -577,7 +522,7 @@ int main(int argc, char *argv[]) {
                         }
                     }
                 }
-                plane_arap_solve(bc, mesh_data, plane_arap_data);
+                global_distance_step(bc, mesh_data, plane_arap_data);
                 x = func.x_from_data([&](int v_idx) {
                     return mesh_data.Polygons.row(v_idx);
                 });
@@ -592,17 +537,17 @@ int main(int argc, char *argv[]) {
                 x = TinyAD::line_search(x, d, f, g, func);
 
 
-                func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
-                    mesh_data.Polygons.row(v_idx) = p;
-                    mesh_data.Polygons.row(v_idx).head(3) = mesh_data.Polygons.row(v_idx).head(3).normalized();
-                    // mesh_data.Polygons(v_idx, 0) = p(0);
-                    // mesh_data.Polygons(v_idx, 1) = p(1);
-                    // mesh_data.Polygons(v_idx, 2) = p(2);
-                    //}
-                    // V.row(v_idx) = p(seq(0, 2));
-                    // Normals.row(v_idx) = p(seq(3, 5));
-                    //P.row(v_idx) = p;
-                });
+                // func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
+                //     mesh_data.Polygons.row(v_idx) = p;
+                //     mesh_data.Polygons.row(v_idx).head(3) = mesh_data.Polygons.row(v_idx).head(3).normalized();
+                //     // mesh_data.Polygons(v_idx, 0) = p(0);
+                //     // mesh_data.Polygons(v_idx, 1) = p(1);
+                //     // mesh_data.Polygons(v_idx, 2) = p(2);
+                //     //}
+                //     // V.row(v_idx) = p(seq(0, 2));
+                //     // Normals.row(v_idx) = p(seq(3, 5));
+                //     //P.row(v_idx) = p;
+                // });
 
 
                 for (int conIdx = 0; conIdx < conP.size(); conIdx++) {
