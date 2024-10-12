@@ -60,7 +60,6 @@ bool plane_arap_precomputation(
     const Eigen::VectorXi &b) {
     using namespace std;
     using namespace Eigen;
-    std::cout << b << std::endl;
     // number of vertices
     const int n = mesh_data.V.rows();
     data.positions.clear();
@@ -508,14 +507,25 @@ TinyAD::ScalarFunction<4, double, long> getFunction(
                               //TODO: fix later
                               T returnValue = 0;
                               i = 0;
-                              for (auto neighor: mesh_data.Hoods[v_idx]) {
-                                  Eigen::Vector3d ogNeighbor = data.V.row(neighor);
+                              int size = mesh_data.Hoods[v_idx].size();
+                              for (int j = 0; j < size; j++) {
+                                  int next = (j + 1) % size;
+                                  int n1 = mesh_data.Hoods[v_idx][j];
+                                  int n2 = mesh_data.Hoods[v_idx][next];
+                                  Eigen::Vector3d ogNeighbor = data.V.row(n1);
+                                  Eigen::Vector3d ogNeighbor2 = data.V.row(n2);
                                   Eigen::Vector3d v = ogNeighbor - ogVert;
-                                  Eigen::Vector3<T> tv = points[i] - vert;
+                                  Eigen::Vector3<T> tv = points[j] - vert;
+
+                                  Eigen::Vector3d v2 = ogNeighbor2 - ogVert;
+                                  Eigen::Vector3<T> tv2 = points[next] - vert;
+
+                                  Eigen::Vector3d v3 = ogNeighbor2 - ogNeighbor;
+                                  Eigen::Vector3<T> tv3 = points[next] - points[j];
 
                                   returnValue += (tv - Rot * v).squaredNorm();
-
-                                  i++;
+                                  returnValue += (tv2 - Rot * v2).squaredNorm();
+                                  returnValue += (tv3 - Rot * v3).squaredNorm();
                               }
                               return returnValue;
                           });

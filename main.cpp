@@ -253,7 +253,7 @@ int main(int argc, char *argv[]) {
     Eigen::MatrixXi polyF;
 
 
-    happly::PLYData plyIn("../test.ply");
+    happly::PLYData plyIn("../blocks.ply");
     std::vector<std::array<double, 3> > vPos = plyIn.getVertexPositions();
     std::vector<std::vector<size_t> > fInd = plyIn.getFaceIndices<size_t>();
     V.conservativeResize(vPos.size(), 3);
@@ -537,17 +537,17 @@ int main(int argc, char *argv[]) {
                 x = TinyAD::line_search(x, d, f, g, func);
 
 
-                // func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
-                //     mesh_data.Polygons.row(v_idx) = p;
-                //     mesh_data.Polygons.row(v_idx).head(3) = mesh_data.Polygons.row(v_idx).head(3).normalized();
-                //     // mesh_data.Polygons(v_idx, 0) = p(0);
-                //     // mesh_data.Polygons(v_idx, 1) = p(1);
-                //     // mesh_data.Polygons(v_idx, 2) = p(2);
-                //     //}
-                //     // V.row(v_idx) = p(seq(0, 2));
-                //     // Normals.row(v_idx) = p(seq(3, 5));
-                //     //P.row(v_idx) = p;
-                // });
+                func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
+                    mesh_data.Polygons.row(v_idx) = p;
+                    mesh_data.Polygons.row(v_idx).head(3) = mesh_data.Polygons.row(v_idx).head(3).normalized();
+                    // mesh_data.Polygons(v_idx, 0) = p(0);
+                    // mesh_data.Polygons(v_idx, 1) = p(1);
+                    // mesh_data.Polygons(v_idx, 2) = p(2);
+                    //}
+                    // V.row(v_idx) = p(seq(0, 2));
+                    // Normals.row(v_idx) = p(seq(3, 5));
+                    //P.row(v_idx) = p;
+                });
 
 
                 for (int conIdx = 0; conIdx < conP.size(); conIdx++) {
