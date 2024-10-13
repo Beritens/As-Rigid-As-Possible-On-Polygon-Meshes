@@ -143,7 +143,7 @@ Eigen::Matrix3<T> getRotation(Eigen::MatrixX<T> v1, Eigen::MatrixX<T> v2) {
 }
 
 inline double getAngle(Eigen::Vector3d a, Eigen::Vector3d b) {
-    return 1.0 / cos(a.dot(b) / (a.norm() * b.norm()));
+    return acos(a.dot(b) / (a.norm() * b.norm()));
 }
 
 

@@ -100,8 +100,8 @@ bool plane_arap_precomputation(
             Eigen::Vector3d v_c = mesh_data.V.row(mesh_data.Hoods[i][next]);
 
             double angleA = getAngle(v_b - v_a, v_c - v_a);
-            double angleB = getAngle(v_b - v_c, v_a - v_c);
-            double angleC = getAngle(v_c - v_b, v_c - v_b);
+            double angleB = getAngle(v_a - v_b, v_c - v_b);
+            double angleC = getAngle(v_a - v_c, v_b - v_c);
 
             data.cotanWeights[i].push_back(1.0 / tan(angleA));
             data.cotanWeights[i].push_back(1.0 / tan(angleB));
@@ -449,9 +449,10 @@ TinyAD::ScalarFunction<4, double, long> getFunction(
                                   points.push_back(neighborVert);
                               }
 
+                              int size = mesh_data.Hoods[v_idx].size();
+                              // Eigen::Matrix3d Rot = data.R.block<3, 3>(0, v_idx * 3);
                               Eigen::MatrixXd V1(points.size() * 3, 3);
                               Eigen::MatrixX<T> V2(points.size() * 3, 3);
-                              int size = mesh_data.Hoods[v_idx].size();
 
                               for (int j = 0; j < size; j++) {
                                   int next = (j + 1) % size;
@@ -490,9 +491,9 @@ TinyAD::ScalarFunction<4, double, long> getFunction(
                                   Eigen::Vector3d v3 = ogNeighbor2 - ogNeighbor;
                                   Eigen::Vector3<T> tv3 = points[next] - points[j];
 
-                                  returnValue += (tv - Rot * v).squaredNorm();
-                                  returnValue += (tv2 - Rot * v2).squaredNorm();
-                                  returnValue += (tv3 - Rot * v3).squaredNorm();
+                                  returnValue += data.cotanWeights[v_idx][j * 3 + 2] * (tv - Rot * v).squaredNorm();
+                                  returnValue += data.cotanWeights[v_idx][j * 3 + 1] * (tv2 - Rot * v2).squaredNorm();
+                                  returnValue += data.cotanWeights[v_idx][j * 3] * (tv3 - Rot * v3).squaredNorm();
                               }
                               return returnValue;
                           });
@@ -616,9 +617,9 @@ TinyAD::ScalarFunction<3, double, long> getBlockFunction(
                                   Eigen::Vector3d v3 = ogNeighbor2 - ogNeighbor;
                                   Eigen::Vector3<T> tv3 = points[next] - points[j];
 
-                                  returnValue += (tv - Rot * v).squaredNorm();
-                                  returnValue += (tv2 - Rot * v2).squaredNorm();
-                                  returnValue += (tv3 - Rot * v3).squaredNorm();
+                                  returnValue += data.cotanWeights[v_idx][j * 3 + 2] * (tv - Rot * v).squaredNorm();
+                                  returnValue += data.cotanWeights[v_idx][j * 3 + 1] * (tv2 - Rot * v2).squaredNorm();
+                                  returnValue += data.cotanWeights[v_idx][j * 3] * (tv3 - Rot * v3).squaredNorm();
                               }
                               return returnValue;
                           });

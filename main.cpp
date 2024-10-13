@@ -321,17 +321,11 @@ int main(int argc, char *argv[]) {
     bool redraw = false;
     std::mutex m;
     bool newCons = false;
+    bool changedCons = false;
+    bool onlyGradientDecent = false;
     std::mutex m2;
     std::thread optimization_thread(
         [&]() {
-            // Groups.resize(connections.rows(), 6);
-            // Eigen::MatrixXd cotanWeights;
-
-            // VertsMap.resize(connections.rows(), 4);
-            // Verts.resize(connections.rows(), 3);
-            // Pre-compute stuff
-            // cotanWeights.resize(V.rows(), V.rows());
-
             Eigen::MatrixXd originalV = mesh_data.V;
 
 
@@ -340,143 +334,12 @@ int main(int argc, char *argv[]) {
             for (int i = 0; i < conP.size(); i++) {
                 b(i) = conP(i);
             }
-            //
-            // igl::ARAPData arap_data;
-            // arap_data.max_iter = 1;
-            // if (!autodiff) {
-            //     custom_arap_precomputation(centers, connections, centers.cols(), b, arap_data, custom_data, Polygons, V,
-            //                                polyF);
-            // }
 
             plane_arap_precomputation(mesh_data, plane_arap_data, b);
 
-            // auto func = TinyAD::scalar_function<4>(TinyAD::range(Polygons.rows()));
-            //
-            // func.add_elements < 10 > (TinyAD::range(mesh_data.V.rows()),
-            //                           [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
-            //                               //calculate arap energy
-            //                               using T = TINYAD_SCALAR_TYPE(
-            //
-            //
-            //
-            //                               element
-            //                               )
-            //                               ;
-            //                               //TODO: einfach constraint berechnung hier rein packen, dann sollte es ja eig. gehen
-            //
-            //                               Eigen::Index v_idx = element.handle;
-            //                               std::vector<int> localConstrainsIndex;
-            //                               for (int i = 0; i < conP.size(); i++) {
-            //                                   if (v_idx == conP(i)) {
-            //                                       localConstrainsIndex.push_back(i);
-            //                                   }
-            //                                   for (auto v: mesh_data.Hoods[v_idx]) {
-            //                                       for (auto p: mesh_data.VertPolygons[v]) {
-            //                                           int size = faceSize(mesh_data.F.row(p));
-            //                                           for (int fi = 0; fi < size; fi++) {
-            //                                               if (mesh_data.F(p, fi) == conP(i)) {
-            //                                                   localConstrainsIndex.push_back(i);
-            //                                               }
-            //                                           }
-            //                                       }
-            //                                   }
-            //                               }
-            //
-            //                               std::map<int, Eigen::Vector4<T> > gons;
-            //                               for (int i = 0; i < localConstrainsIndex.size(); i++) {
-            //                                   Eigen::Vector4<T> vecs[3];
-            //                                   int j = 0;
-            //                                   for (auto k: mesh_data.VertPolygons[conP(localConstrainsIndex[i])]) {
-            //                                       vecs[j] = element.variables(k);
-            //                                       j++;
-            //                                   }
-            //                                   Eigen::Vector3<T> normal1 = vecs[0].head(3).normalized();
-            //                                   Eigen::Vector3<T> normal2 = vecs[1].head(3).normalized();
-            //                                   Eigen::Vector3<T> normal3 = vecs[2].head(3).normalized();
-            //
-            //                                   Eigen::Matrix3<T> m;
-            //                                   m.row(0) = normal1;
-            //                                   m.row(1) = normal2;
-            //                                   m.row(2) = normal3;
-            //
-            //                                   Eigen::Vector3<T> dist =
-            //                                           m * constraints.row(localConstrainsIndex[i]).transpose();
-            //                                   j = 0;
-            //                                   for (auto k: mesh_data.VertPolygons[conP(localConstrainsIndex[i])]) {
-            //                                       Eigen::Vector4<T> pol = element.variables(k);
-            //                                       pol(3) = dist(j);
-            //                                       gons[k] = pol;
-            //                                       j++;
-            //                                   }
-            //                               }
-            //
-            //                               std::vector<Eigen::Vector4<T> > polygons;
-            //                               for (auto f: mesh_data.VertPolygons[v_idx]) {
-            //                                   Eigen::Vector4<T> pol;
-            //                                   pol = element.variables(f);
-            //                                   if (gons.find(f) != gons.end()) {
-            //                                       pol = gons[f];
-            //                                   }
-            //                                   // Eigen::Vector3<T> normal = element.variables(f);
-            //                                   // pol.head(3) = normal;
-            //                                   // pol(3) = mesh_data.Polygons(f, 3);
-            //                                   polygons.push_back(pol);
-            //                               }
-            //                               Eigen::Vector3<T> vert = getPoint<T>(polygons[0], polygons[1], polygons[2]);
-            //                               Eigen::Vector3d ogVert = originalV.row(v_idx);
-            //                               std::vector<Eigen::Vector3<T> > points;
-            //
-            //                               for (auto neighbor: mesh_data.Hoods[v_idx]) {
-            //                                   std::vector<Eigen::Vector4<T> > neighPolygons;
-            //                                   for (auto f: mesh_data.VertPolygons[neighbor]) {
-            //                                       Eigen::Vector4<T> pol;
-            //                                       pol = element.variables(f);
-            //                                       if (gons.find(f) != gons.end()) {
-            //                                           pol = gons[f];
-            //                                       }
-            //                                       // Eigen::Vector3<T> normal = element.variables(f);
-            //                                       // pol.head(3) = normal;
-            //                                       // pol(3) = mesh_data.Polygons(f, 3);
-            //                                       neighPolygons.push_back(pol);
-            //                                   }
-            //                                   Eigen::Vector3<T> neighborVert = getPoint<T>(
-            //                                       neighPolygons[0], neighPolygons[1], neighPolygons[2]);
-            //                                   points.push_back(neighborVert);
-            //                               }
-            //                               int i = 0;
-            //                               Eigen::MatrixXd V1(points.size(), 3);
-            //                               Eigen::MatrixX<T> V2(points.size(), 3);
-            //                               for (auto neighor: mesh_data.Hoods[v_idx]) {
-            //                                   Eigen::Vector3d ogNeighbor = originalV.row(neighor);
-            //                                   V1.row(i) = ogNeighbor - ogVert;
-            //                                   V2.row(i) = points[i] - vert;
-            //
-            //                                   i++;
-            //                               }
-            //                               Eigen::Matrix3<T> Rot = getRotation<T>(V1, V2);
-            //                               //wrong but will fix later
-            //                               //TODO: fix later
-            //                               T returnValue = 0;
-            //                               i = 0;
-            //                               for (auto neighor: mesh_data.Hoods[v_idx]) {
-            //                                   Eigen::Vector3d ogNeighbor = originalV.row(neighor);
-            //                                   Eigen::Vector3d v = ogNeighbor - ogVert;
-            //                                   Eigen::Vector3<T> tv = points[i] - vert;
-            //
-            //                                   returnValue += (tv - Rot * v).squaredNorm();
-            //
-            //                                   i++;
-            //                               }
-            //                               return returnValue;
-            //                           });
-            // }
 
             auto func = getFunction(constraints, mesh_data, plane_arap_data);
             auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
-
-            // Assemble inital x vector from P matrix.
-            // x_from_data(...) takes a lambda function that maps
-            // each variable handle (vertex index) to its initial 2D value (Eigen::Vector2d).
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
                 // return Polygons.row(v_idx).head(3);
@@ -492,40 +355,76 @@ int main(int argc, char *argv[]) {
             double convergence_eps = 1e-2;
             Eigen::ConjugateGradient<Eigen::SparseMatrix<double> > cg_solver;
             int i = -1;
-            bool useBlockFunc = true;
+            bool useBlockFunc = false;
             while (true) {
                 {
+                    i++;
                     std::lock_guard<std::mutex> lock(m2);
-                    if (newCons) {
-                        conP.conservativeResize(tempConP.size());
-                        for (int j = 0; j < tempConP.size(); j++) {
-                            conP(j) = tempConP(j);
+                    if (newCons || changedCons) {
+                        if (newCons) {
+                            conP.conservativeResize(tempConP.size());
+                            for (int j = 0; j < tempConP.size(); j++) {
+                                conP(j) = tempConP(j);
+                            }
+                            b.conservativeResize(conP.size());
+                            for (int j = 0; j < conP.size(); j++) {
+                                b(j) = conP(j);
+                            }
+                            plane_arap_precomputation(mesh_data, plane_arap_data, b);
                         }
                         constraints.conservativeResize(conP.size(), 3);
                         for (int j = 0; j < conP.size(); j++) {
                             constraints.row(j) = tempConstraints.row(j);
                         }
-                        b.conservativeResize(conP.size());
-                        for (int j = 0; j < conP.size(); j++) {
-                            b(j) = conP(j);
-                        }
-                        plane_arap_precomputation(mesh_data, plane_arap_data, b);
                         newCons = false;
-                    }
-                }
-                i++;
-                MatrixXd bc(b.size(), 3);
-                for (int j = 0; j < b.size(); j++) {
-                    bc.row(j) = mesh_data.V.row(b(j));
-                    for (int k = 0; k < conP.size(); k++) {
-                        if (conP(k) == b(j)) {
-                            bc.row(j) = constraints.row(k);
-                            break;
+                        changedCons = false;
+
+                        if (onlyGradientDecent) {
+                            MatrixXd bc(b.size(), 3);
+                            for (int j = 0; j < b.size(); j++) {
+                                bc.row(j) = mesh_data.V.row(b(j));
+                                for (int k = 0; k < conP.size(); k++) {
+                                    if (conP(k) == b(j)) {
+                                        bc.row(j) = constraints.row(k);
+                                        break;
+                                    }
+                                }
+                            }
+                            getRotations(mesh_data, plane_arap_data);
+                            global_distance_step(bc, mesh_data, plane_arap_data);
                         }
                     }
                 }
-                getRotations(mesh_data, plane_arap_data);
-                global_distance_step(bc, mesh_data, plane_arap_data);
+
+
+                calcNewV(mesh_data.Polygons); {
+                    std::lock_guard<std::mutex> lock(m);
+                    redraw = true;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+                if (!onlyGradientDecent) {
+                    MatrixXd bc(b.size(), 3);
+                    for (int j = 0; j < b.size(); j++) {
+                        bc.row(j) = mesh_data.V.row(b(j));
+                        for (int k = 0; k < conP.size(); k++) {
+                            if (conP(k) == b(j)) {
+                                bc.row(j) = constraints.row(k);
+                                break;
+                            }
+                        }
+                    }
+                    getRotations(mesh_data, plane_arap_data);
+                    global_distance_step(bc, mesh_data, plane_arap_data);
+                }
+
+
+                Polygons = mesh_data.Polygons;
+                calcNewV(mesh_data.Polygons); {
+                    std::lock_guard<std::mutex> lock(m);
+                    redraw = true;
+                }
+
                 x = func.x_from_data([&](int v_idx) {
                     return mesh_data.Polygons.row(v_idx);
                 });
@@ -539,7 +438,7 @@ int main(int argc, char *argv[]) {
                                           : func.eval_with_hessian_proj(x);
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
                 Eigen::VectorXd d = cg_solver.compute(
-                    H_proj + 1e-6 * TinyAD::identity<double>(useBlockFunc ? x_block.size() : x.size())).solve(-g);
+                    H_proj + 1e-9 * TinyAD::identity<double>(useBlockFunc ? x_block.size() : x.size())).solve(-g);
                 // Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver);
                 if (TinyAD::newton_decrement(d, g) < convergence_eps) {
                     //break;
@@ -585,16 +484,6 @@ int main(int argc, char *argv[]) {
                         mesh_data.Polygons(k, 3) = dist(j);
                         j++;
                     }
-                }
-
-
-                Polygons = mesh_data.Polygons;
-                // x = func.x_from_data([&](int v_idx) {
-                //     return mesh_data.Polygons.row(v_idx);
-                // });
-                calcNewV(mesh_data.Polygons); {
-                    std::lock_guard<std::mutex> lock(m);
-                    redraw = true;
                 }
             }
             TINYAD_DEBUG_OUT("Final energy: " << func.eval(x));
@@ -677,6 +566,7 @@ int main(int argc, char *argv[]) {
         return false;
     };
 
+
     viewer.callback_mouse_up = [&](igl::opengl::glfw::Viewer &viewer, int button, int modifier) -> bool {
         if (button == GLFW_MOUSE_BUTTON_LEFT) {
             isDragging = false;
@@ -694,9 +584,6 @@ int main(int argc, char *argv[]) {
             double w = (viewer.core().proj * startPointView)(3);
             startPointView(0) = startPointView(0) + (0.8 * w * (x - startX) / viewer.core().viewport(3));
             startPointView(1) = startPointView(1) + (0.8 * w * ((y - startY)) / viewer.core().viewport(3));
-            std::cout << "viweport" << std::endl;
-            std::cout << w << std::endl;
-            std::cout << "end viewport" << std::endl;
             Eigen::Matrix4f modelViewInv = modelView.inverse();
             Eigen::Vector4f backToWorld = modelViewInv * startPointView;
             tempConstraints.resize(conP.size(), 3);
@@ -715,7 +602,7 @@ int main(int argc, char *argv[]) {
                 viewer.data().add_points(tempConstraints.row(i), Eigen::RowVector3d(1, 0, 0));
             } {
                 std::lock_guard<std::mutex> lock(m2);
-                newCons = true;
+                changedCons = true;
             }
         }
         return false; // Returning false lets the viewer process the event normally
@@ -724,6 +611,30 @@ int main(int argc, char *argv[]) {
     viewer.callback_key_pressed = [&](igl::opengl::glfw::Viewer &viewer, unsigned char key, int modifier) -> bool {
         if (key == GLFW_KEY_SPACE) {
             selectMode = !selectMode;
+        }
+        if (key == GLFW_KEY_G) {
+            onlyGradientDecent = !onlyGradientDecent;
+        }
+        if (key == GLFW_KEY_M) {
+            tempConstraints.resize(conP.size(), 3);
+            for (int i = 0; i < conP.size(); i++) {
+                tempConstraints.row(i) = constraints.row(i);
+            }
+            Eigen::Vector3d newCon = tempConstraints.row(conP.size() - 1);
+            newCon(1) = newCon(1) + 1;
+            tempConP = conP;
+            tempConstraints.row(conP.size() - 1) = newCon;
+            viewer.data().clear_points();
+            for (int i = 0; i < tempConstraints.rows(); i++) {
+                if (i == conP.size() - 1) {
+                    viewer.data().add_points(tempConstraints.row(i), Eigen::RowVector3d(0, 1, 0));
+                    continue;
+                }
+                viewer.data().add_points(tempConstraints.row(i), Eigen::RowVector3d(1, 0, 0));
+            } {
+                std::lock_guard<std::mutex> lock(m2);
+                changedCons = true;
+            }
         }
         return false;
     };
