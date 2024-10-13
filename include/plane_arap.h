@@ -110,7 +110,17 @@ bool global_distance_step(
     poly_mesh_data &mesh_data,
     plane_arap_data &data);
 
+
+void getRotations(
+    poly_mesh_data &mesh_data,
+    plane_arap_data &data);
+
 TinyAD::ScalarFunction<4, double, long> getFunction(
+    const Eigen::MatrixXd &bc,
+    poly_mesh_data &mesh_data,
+    plane_arap_data &data);
+
+TinyAD::ScalarFunction<3, double, long> getBlockFunction(
     const Eigen::MatrixXd &bc,
     poly_mesh_data &mesh_data,
     plane_arap_data &data);

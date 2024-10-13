@@ -11,6 +11,7 @@ struct plane_arap_data {
     Eigen::MatrixXd V;
     Eigen::VectorXi b;
     std::vector<int> positions;
+    Eigen::MatrixXd R;
     std::vector<std::vector<double> > cotanWeights;
 };
 

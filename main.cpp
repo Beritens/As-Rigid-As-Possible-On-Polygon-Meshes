@@ -69,21 +69,17 @@ plane_arap_data plane_arap_data;
 //
 
 
-void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &poly) {
-    using namespace Eigen;
-    int v = 0;
-    // for (int i = 0; i < 6; i++) {
-    //     viewer.data().add_points(points.row(i), Eigen::RowVector3d(1, 0, 0));
-    // }
+void calcNewV(const Eigen::MatrixXd &poly) {
     for (int i = 0; i < mesh_data.V.rows(); i++) {
-        // auto row = connections.row(i);
-        std::vector<Vector4d> pols;
+        std::vector<Eigen::Vector4d> pols;
         for (auto pol: mesh_data.VertPolygons[i]) {
             pols.push_back(poly.row(pol));
         }
         mesh_data.V.row(i) = getPoint<double>(pols[0], pols[1], pols[2]);
-        v++;
     }
+}
+
+void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &poly) {
     calculateTriangles(mesh_data);
     viewer.data().set_mesh(mesh_data.V, mesh_data.T);
 }
@@ -253,7 +249,7 @@ int main(int argc, char *argv[]) {
     Eigen::MatrixXi polyF;
 
 
-    happly::PLYData plyIn("../blocks.ply");
+    happly::PLYData plyIn("../test.ply");
     std::vector<std::array<double, 3> > vPos = plyIn.getVertexPositions();
     std::vector<std::vector<size_t> > fInd = plyIn.getFaceIndices<size_t>();
     V.conservativeResize(vPos.size(), 3);
@@ -474,7 +470,9 @@ int main(int argc, char *argv[]) {
             //                               return returnValue;
             //                           });
             // }
+
             auto func = getFunction(constraints, mesh_data, plane_arap_data);
+            auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
 
             // Assemble inital x vector from P matrix.
             // x_from_data(...) takes a lambda function that maps
@@ -484,6 +482,9 @@ int main(int argc, char *argv[]) {
                 // return Polygons.row(v_idx).head(3);
                 return Polygons.row(v_idx);
             });
+            Eigen::VectorXd x_block = funcBlock.x_from_data([&](int v_idx) {
+                return Polygons.row(v_idx).head(3);
+            });
             // Projected Newton
 
             TinyAD::LinearSolver solver;
@@ -491,6 +492,7 @@ int main(int argc, char *argv[]) {
             double convergence_eps = 1e-2;
             Eigen::ConjugateGradient<Eigen::SparseMatrix<double> > cg_solver;
             int i = -1;
+            bool useBlockFunc = true;
             while (true) {
                 {
                     std::lock_guard<std::mutex> lock(m2);
@@ -522,32 +524,43 @@ int main(int argc, char *argv[]) {
                         }
                     }
                 }
+                getRotations(mesh_data, plane_arap_data);
                 global_distance_step(bc, mesh_data, plane_arap_data);
                 x = func.x_from_data([&](int v_idx) {
                     return mesh_data.Polygons.row(v_idx);
                 });
 
-                auto [f, g, H_proj] = func.eval_with_hessian_proj(x);
+                x_block = funcBlock.x_from_data([&](int v_idx) {
+                    return mesh_data.Polygons.row(v_idx).head(3).normalized();
+                });
+
+                auto [f, g, H_proj] = useBlockFunc
+                                          ? funcBlock.eval_with_hessian_proj(x_block)
+                                          : func.eval_with_hessian_proj(x);
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
-                Eigen::VectorXd d = cg_solver.compute(H_proj + 1e-6 * TinyAD::identity<double>(x.size())).solve(-g);
+                Eigen::VectorXd d = cg_solver.compute(
+                    H_proj + 1e-6 * TinyAD::identity<double>(useBlockFunc ? x_block.size() : x.size())).solve(-g);
                 // Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver);
                 if (TinyAD::newton_decrement(d, g) < convergence_eps) {
                     //break;
                 }
-                x = TinyAD::line_search(x, d, f, g, func);
+                if (useBlockFunc) {
+                    x_block = TinyAD::line_search(x_block, d, f, g, funcBlock);
+                } else {
+                    x = TinyAD::line_search(x, d, f, g, func);
+                }
 
 
-                func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
-                    mesh_data.Polygons.row(v_idx) = p;
-                    mesh_data.Polygons.row(v_idx).head(3) = mesh_data.Polygons.row(v_idx).head(3).normalized();
-                    // mesh_data.Polygons(v_idx, 0) = p(0);
-                    // mesh_data.Polygons(v_idx, 1) = p(1);
-                    // mesh_data.Polygons(v_idx, 2) = p(2);
-                    //}
-                    // V.row(v_idx) = p(seq(0, 2));
-                    // Normals.row(v_idx) = p(seq(3, 5));
-                    //P.row(v_idx) = p;
-                });
+                if (useBlockFunc) {
+                    funcBlock.x_to_data(x_block, [&](int v_idx, const Eigen::VectorXd &p) {
+                        mesh_data.Polygons.row(v_idx).head(3) = p.normalized();
+                    });
+                } else {
+                    func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
+                        mesh_data.Polygons.row(v_idx) = p;
+                        mesh_data.Polygons.row(v_idx).head(3) = mesh_data.Polygons.row(v_idx).head(3).normalized();
+                    });
+                }
 
 
                 for (int conIdx = 0; conIdx < conP.size(); conIdx++) {
@@ -579,8 +592,7 @@ int main(int argc, char *argv[]) {
                 // x = func.x_from_data([&](int v_idx) {
                 //     return mesh_data.Polygons.row(v_idx);
                 // });
-
-                {
+                calcNewV(mesh_data.Polygons); {
                     std::lock_guard<std::mutex> lock(m);
                     redraw = true;
                 }

@@ -123,19 +123,6 @@ bool plane_arap_precomputation(
             insertInL(L, i, n2, data.cotanWeights[i][j * 3 + 1]);
             insertInL(L, n1, n2, data.cotanWeights[i][j * 3]);
         }
-
-        // for (auto j: val) {
-        //     int v2 = j * 3;
-        //     if (v2 < 0) {
-        //         continue;
-        //     }
-        //     L(v, v2) = -1;
-        //     L(v + 1, v2 + 1) = -1;
-        //     L(v + 2, v2 + 2) = -1;
-        // }
-        // L(v, v) = size;
-        // L(v + 1, v + 1) = size;
-        // L(v + 2, v + 2) = size;
     }
 
     data.L = L;
@@ -144,7 +131,43 @@ bool plane_arap_precomputation(
     data.Polygons = mesh_data.Polygons;
     data.b = b;
     data.V = mesh_data.V;
+    data.R = Eigen::MatrixXd(3, mesh_data.V.rows() * 3);
     return true;
+}
+
+void getRotations(poly_mesh_data &mesh_data, plane_arap_data &data) {
+    for (int i = 0; i < data.V.rows(); i++) {
+        Eigen::MatrixXd V1 = Eigen::MatrixXd::Zero(mesh_data.Hoods[i].size() * 3, 3);
+        Eigen::MatrixXd V2 = Eigen::MatrixXd::Zero(mesh_data.Hoods[i].size() * 3, 3);
+
+        Eigen::Vector3d originalVert = data.V.row(i);
+        Eigen::Vector3d newVert = mesh_data.V.row(i);
+
+        int size = mesh_data.Hoods[i].size();
+
+        for (int j = 0; j < size; j++) {
+            int next = (j + 1) % size;
+            int n1 = mesh_data.Hoods[i][j];
+            int n2 = mesh_data.Hoods[i][next];
+            Eigen::Vector3d originalNeighbor = data.V.row(n1);
+            Eigen::Vector3d newNeighbor = mesh_data.V.row(n1);
+            Eigen::Vector3d originalNeighbor2 = data.V.row(n2);
+            Eigen::Vector3d newNeighbor2 = mesh_data.V.row(n2);
+            V1.row(j * 3) = (originalVert - originalNeighbor);
+            V2.row(j * 3) = (newVert - newNeighbor);
+
+            V1.row(j * 3 + 1) = (originalVert - originalNeighbor2);
+            V2.row(j * 3 + 1) = (newVert - newNeighbor2);
+
+            V1.row(j * 3 + 2) = (originalNeighbor - originalNeighbor2);
+            V2.row(j * 3 + 2) = (newNeighbor - newNeighbor2);
+        }
+
+
+        Eigen::Matrix3d s = V2.transpose() * V1;
+        Eigen::Matrix3d rot = getRotation(V1, V2);
+        data.R.block<3, 3>(0, i * 3) = rot;
+    }
 }
 
 void insertInB(Eigen::VectorXd &b, int v1, int v2, double cot, const Eigen::MatrixXd V, const Eigen::Matrix3d rot) {
@@ -170,20 +193,6 @@ bool global_distance_step(
     using namespace std;
     // std::this_thread::sleep_for(std::chrono::milliseconds(500));
     const int n = data.V.rows();
-    // Eigen::MatrixXd N = Eigen::MatrixXd::Zero(mesh_data.F.rows(), mesh_data.V.rows() * 3);
-    // for (int i = 0; i < mesh_data.F.rows(); i++) {
-    //     Eigen::Vector3d normal = mesh_data.Polygons.row(i).head(3).normalized();
-    //     int size = faceSize(mesh_data.F.row(i));
-    //     for (int j = 0; j < size; j++) {
-    //         int vert = mesh_data.F(i, j);
-    //         N.block<1, 3>(i, 3 * vert) = normal.transpose() / size;
-    //     }
-    // }
-    //
-    // Eigen::VectorXd d(mesh_data.Polygons.rows());
-    // for (int i = 0; i < mesh_data.Polygons.rows(); i++) {
-    //     d(i) = mesh_data.Polygons(i, 3);
-    // }
     std::vector<Eigen::MatrixXd> invNs;
     std::vector<std::vector<int> > nIdx;
 
@@ -228,58 +237,6 @@ bool global_distance_step(
         d(i) = mesh_data.Polygons(i, 3);
     }
 
-    // std::cout << N << std::endl;
-    // std::cout << d << std::endl;
-    // std::cout << "verts" << std::endl;
-    // std::cout << nV << std::endl;
-    // std::cout << "test" << std::endl;
-    // std::cout << NInv * d << std::endl;
-    // std::cout << "test2" << std::endl;
-    // std::cout << N * testV << std::endl;
-    //
-    //test end
-
-
-    //MatrixXd S(mesh_data.V.rows() * 3, 3);
-
-    MatrixXd R(3, 3 * data.V.rows());
-
-    for (int i = 0; i < data.V.rows(); i++) {
-        Eigen::MatrixXd V1 = Eigen::MatrixXd::Zero(mesh_data.Hoods[i].size(), 3);
-        Eigen::MatrixXd V2 = Eigen::MatrixXd::Zero(mesh_data.Hoods[i].size(), 3);
-
-        Eigen::Vector3d originalVert = data.V.row(i);
-        Eigen::Vector3d newVert = nV.segment(3 * i, 3);
-        int j = 0;
-        for (auto v: mesh_data.Hoods[i]) {
-            Eigen::Vector3d originalNeighbor = data.V.row(v);
-            Eigen::Vector3d newNeighbor = nV.segment(3 * v, 3);
-
-            V1.row(j) += originalVert - originalNeighbor;
-            V2.row(j) += newVert - newNeighbor;
-
-            j++;
-        }
-
-
-        Eigen::Matrix3d s = V2.transpose() * V1;
-        Eigen::Matrix3d rot = getRotation(V1, V2);
-        R.block<3, 3>(0, i * 3) = rot;
-
-        // std::cout << V1 << std::endl;
-        // std::cout << V2 << std::endl;
-        // for (int x = 0; x < 3; x++) {
-        //     for (int y = 0; y < 3; y++) {
-        //         S(x * mesh_data.V.rows() + i, y) = s(x, y);
-        //     }
-        // }
-    }
-    // S /= S.array().abs().maxCoeff();
-
-
-    // igl::fit_rotations(S, true, R);
-
-    // std::cout << R << std::endl;
 
     Eigen::MatrixXd M = data.L * NInv;
 
@@ -319,7 +276,7 @@ bool global_distance_step(
         std::vector val = mesh_data.Hoods[i];
         int size = val.size();
 
-        Eigen::Matrix3d rot = R.block<3, 3>(0, i * 3);
+        Eigen::Matrix3d rot = data.R.block<3, 3>(0, i * 3);
 
         for (int j = 0; j < size; j++) {
             int next = (j + 1) % size;
@@ -491,23 +448,159 @@ TinyAD::ScalarFunction<4, double, long> getFunction(
                                       neighPolygons[0], neighPolygons[1], neighPolygons[2]);
                                   points.push_back(neighborVert);
                               }
-                              int i = 0;
-                              Eigen::MatrixXd V1(points.size(), 3);
-                              Eigen::MatrixX<T> V2(points.size(), 3);
-                              for (auto neighor: mesh_data.Hoods[v_idx]) {
-                                  Eigen::Vector3d ogNeighbor = data.V.row(neighor);
-                                  V1.row(i) = ogNeighbor - ogVert;
-                                  V2.row(i) = points[i] - vert;
 
-                                  i++;
+                              Eigen::MatrixXd V1(points.size() * 3, 3);
+                              Eigen::MatrixX<T> V2(points.size() * 3, 3);
+                              int size = mesh_data.Hoods[v_idx].size();
+
+                              for (int j = 0; j < size; j++) {
+                                  int next = (j + 1) % size;
+                                  int n1 = mesh_data.Hoods[v_idx][j];
+                                  int n2 = mesh_data.Hoods[v_idx][next];
+                                  Eigen::Vector3d originalNeighbor = data.V.row(n1);
+                                  Eigen::Vector3<T> newNeighbor = points[j];
+                                  Eigen::Vector3d originalNeighbor2 = data.V.row(n2);
+                                  Eigen::Vector3<T> newNeighbor2 = points[next];
+                                  V1.row(j * 3) = (ogVert - originalNeighbor);
+                                  V2.row(j * 3) = (vert - newNeighbor);
+
+                                  V1.row(j * 3 + 1) = (ogVert - originalNeighbor2);
+                                  V2.row(j * 3 + 1) = (vert - newNeighbor2);
+
+                                  V1.row(j * 3 + 2) = (originalNeighbor - originalNeighbor2);
+                                  V2.row(j * 3 + 2) = (newNeighbor - newNeighbor2);
                               }
 
                               Eigen::Matrix3<T> Rot = getRotation<T>(V1, V2);
                               //wrong but will fix later
                               //TODO: fix later
                               T returnValue = 0;
-                              i = 0;
+                              for (int j = 0; j < size; j++) {
+                                  int next = (j + 1) % size;
+                                  int n1 = mesh_data.Hoods[v_idx][j];
+                                  int n2 = mesh_data.Hoods[v_idx][next];
+                                  Eigen::Vector3d ogNeighbor = data.V.row(n1);
+                                  Eigen::Vector3d ogNeighbor2 = data.V.row(n2);
+                                  Eigen::Vector3d v = ogNeighbor - ogVert;
+                                  Eigen::Vector3<T> tv = points[j] - vert;
+
+                                  Eigen::Vector3d v2 = ogNeighbor2 - ogVert;
+                                  Eigen::Vector3<T> tv2 = points[next] - vert;
+
+                                  Eigen::Vector3d v3 = ogNeighbor2 - ogNeighbor;
+                                  Eigen::Vector3<T> tv3 = points[next] - points[j];
+
+                                  returnValue += (tv - Rot * v).squaredNorm();
+                                  returnValue += (tv2 - Rot * v2).squaredNorm();
+                                  returnValue += (tv3 - Rot * v3).squaredNorm();
+                              }
+                              return returnValue;
+                          });
+    return func;
+}
+
+TinyAD::ScalarFunction<3, double, long> getBlockFunction(
+    const Eigen::MatrixXd &bc,
+    poly_mesh_data &mesh_data,
+    plane_arap_data &data) {
+    auto func = TinyAD::scalar_function<3>(TinyAD::range(data.Polygons.rows()));
+
+    func.add_elements<10>(TinyAD::range(mesh_data.V.rows()),
+                          [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
+                              //calculate arap energy
+                              using T = TINYAD_SCALAR_TYPE(
+
+
+                                  element
+                              );
+                              //TODO: einfach constraint berechnung hier rein packen, dann sollte es ja eig. gehen
+
+                              Eigen::Index v_idx = element.handle;
+                              std::vector<int> localConstrainsIndex;
+                              for (int i = 0; i < data.b.size(); i++) {
+                                  if (v_idx == data.b(i)) {
+                                      localConstrainsIndex.push_back(i);
+                                  }
+                                  for (auto v: mesh_data.Hoods[v_idx]) {
+                                      for (auto p: mesh_data.VertPolygons[v]) {
+                                          int size = faceSize(mesh_data.F.row(p));
+                                          for (int fi = 0; fi < size; fi++) {
+                                              if (mesh_data.F(p, fi) == data.b(i)) {
+                                                  localConstrainsIndex.push_back(i);
+                                              }
+                                          }
+                                      }
+                                  }
+                              }
+
+                              std::map<int, Eigen::Vector4<T> > gons;
+                              for (int i = 0; i < localConstrainsIndex.size(); i++) {
+                                  Eigen::Vector3<T> vecs[3];
+                                  int j = 0;
+                                  for (auto k: mesh_data.VertPolygons[data.b(localConstrainsIndex[i])]) {
+                                      vecs[j] = element.variables(k);
+                                      j++;
+                                  }
+                                  Eigen::Vector3<T> normal1 = vecs[0];
+                                  Eigen::Vector3<T> normal2 = vecs[1];
+                                  Eigen::Vector3<T> normal3 = vecs[2];
+
+                                  Eigen::Matrix3<T> m;
+                                  m.row(0) = normal1;
+                                  m.row(1) = normal2;
+                                  m.row(2) = normal3;
+
+                                  Eigen::Vector3<T> dist =
+                                          m * bc.row(localConstrainsIndex[i]).transpose();
+                                  j = 0;
+                                  for (auto k: mesh_data.VertPolygons[data.b(localConstrainsIndex[i])]) {
+                                      Eigen::Vector4<T> pol;
+                                      pol.head(3) = element.variables(k);
+                                      pol(3) = dist(j);
+                                      gons[k] = pol;
+                                      j++;
+                                  }
+                              }
+
+                              std::vector<Eigen::Vector4<T> > polygons;
+                              for (auto f: mesh_data.VertPolygons[v_idx]) {
+                                  Eigen::Vector4<T> pol;
+                                  if (gons.find(f) != gons.end()) {
+                                      pol = gons[f];
+                                  } else {
+                                      Eigen::Vector3<T> normal = element.variables(f);
+                                      pol.head(3) = normal;
+                                      pol(3) = mesh_data.Polygons(f, 3);
+                                  }
+                                  polygons.push_back(pol);
+                              }
+                              Eigen::Vector3<T> vert = getPoint<T>(polygons[0], polygons[1], polygons[2]);
+                              Eigen::Vector3d ogVert = data.V.row(v_idx);
+                              std::vector<Eigen::Vector3<T> > points;
+
+                              for (auto neighbor: mesh_data.Hoods[v_idx]) {
+                                  std::vector<Eigen::Vector4<T> > neighPolygons;
+                                  for (auto f: mesh_data.VertPolygons[neighbor]) {
+                                      Eigen::Vector4<T> pol;
+                                      if (gons.find(f) != gons.end()) {
+                                          pol = gons[f];
+                                      } else {
+                                          Eigen::Vector3<T> normal = element.variables(f);
+                                          pol.head(3) = normal;
+                                          pol(3) = mesh_data.Polygons(f, 3);
+                                      }
+                                      neighPolygons.push_back(pol);
+                                  }
+                                  Eigen::Vector3<T> neighborVert = getPoint<T>(
+                                      neighPolygons[0], neighPolygons[1], neighPolygons[2]);
+                                  points.push_back(neighborVert);
+                              }
+
                               int size = mesh_data.Hoods[v_idx].size();
+
+                              Eigen::Matrix3d Rot = data.R.block<3, 3>(0, v_idx * 3);
+
+                              T returnValue = 0;
                               for (int j = 0; j < size; j++) {
                                   int next = (j + 1) % size;
                                   int n1 = mesh_data.Hoods[v_idx][j];
