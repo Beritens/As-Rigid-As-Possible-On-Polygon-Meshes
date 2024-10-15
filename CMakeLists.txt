@@ -55,6 +55,9 @@ message(STATUS "Source files: ${SRCFILES}")
 add_library(srcfiles ${SRCFILES}
         source/plane_arap.cpp
         include/plane_arap.h
+        include/face_arap_data.h
+        source/face_arap.cpp
+        include/face_arap.h
 )
 
 target_link_libraries(srcfiles TinyAD)
@@ -66,6 +69,10 @@ add_executable(deformation "main.cpp"
         include/poly_mesh_data.h
         include/plane_arap_data.h
         include/earcut.hpp
+        include/face_arap_data.h
+        source/face_arap.cpp
+        include/face_arap.h
+        include/helper.h
 )
 
 

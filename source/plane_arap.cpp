@@ -9,27 +9,6 @@
 
 #include <iostream>
 
-void removeRow(Eigen::MatrixXd &matrix, unsigned int rowToRemove) {
-    unsigned int numRows = matrix.rows() - 1;
-    unsigned int numCols = matrix.cols();
-
-    if (rowToRemove < numRows)
-        matrix.block(rowToRemove, 0, numRows - rowToRemove, numCols) = matrix.block(
-            rowToRemove + 1, 0, numRows - rowToRemove, numCols);
-
-    matrix.conservativeResize(numRows, numCols);
-}
-
-void removeColumn(Eigen::MatrixXd &matrix, unsigned int colToRemove) {
-    unsigned int numRows = matrix.rows();
-    unsigned int numCols = matrix.cols() - 1;
-
-    if (colToRemove < numCols)
-        matrix.block(0, colToRemove, numRows, numCols - colToRemove) = matrix.block(
-            0, colToRemove + 1, numRows, numCols - colToRemove);
-
-    matrix.conservativeResize(numRows, numCols);
-}
 
 template<typename Scalar>
 using MatrixXX = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>;
@@ -62,34 +41,9 @@ bool plane_arap_precomputation(
     using namespace Eigen;
     // number of vertices
     const int n = mesh_data.V.rows();
-    data.positions.clear();
-
-    int mapTo = 0;
-    for (int i = 0; i < mesh_data.V.rows(); i++) {
-        bool inB = false;
-        int bIndex = 0;
-        for (int j = 0; j < b.size(); j++) {
-            if (b(j) == i) {
-                inB = true;
-                bIndex = j;
-                break;
-            }
-        }
-        if (inB) {
-            data.positions.push_back(-bIndex - 1);
-            data.positions.push_back(-bIndex - 1);
-            data.positions.push_back(-bIndex - 1);
-        } else {
-            data.positions.push_back(mapTo);
-            mapTo++;
-            data.positions.push_back(mapTo);
-            mapTo++;
-            data.positions.push_back(mapTo);
-            mapTo++;
-        }
-    }
 
 
+    data.cotanWeights.clear();
     data.cotanWeights.resize(mesh_data.V.rows());
 
     for (int i = 0; i < mesh_data.V.rows(); i++) {
@@ -102,6 +56,9 @@ bool plane_arap_precomputation(
             double angleA = getAngle(v_b - v_a, v_c - v_a);
             double angleB = getAngle(v_a - v_b, v_c - v_b);
             double angleC = getAngle(v_a - v_c, v_b - v_c);
+            // data.cotanWeights[i].push_back(1.0);
+            // data.cotanWeights[i].push_back(1.0);
+            // data.cotanWeights[i].push_back(1.0);
 
             data.cotanWeights[i].push_back(1.0 / tan(angleA));
             data.cotanWeights[i].push_back(1.0 / tan(angleB));
@@ -119,9 +76,9 @@ bool plane_arap_precomputation(
             int next = (j + 1) % size;
             int n1 = mesh_data.Hoods[i][j];
             int n2 = mesh_data.Hoods[i][next];
-            insertInL(L, i, n1, data.cotanWeights[i][j * 3 + 2]);
-            insertInL(L, i, n2, data.cotanWeights[i][j * 3 + 1]);
-            insertInL(L, n1, n2, data.cotanWeights[i][j * 3]);
+            insertInL(L, i, n1, data.cotanWeights[i][j * 3 + 2] * 1);
+            insertInL(L, i, n2, data.cotanWeights[i][j * 3 + 1] * 1);
+            insertInL(L, n1, n2, data.cotanWeights[i][j * 3] * 6);
         }
     }
 
@@ -153,18 +110,17 @@ void getRotations(poly_mesh_data &mesh_data, plane_arap_data &data) {
             Eigen::Vector3d newNeighbor = mesh_data.V.row(n1);
             Eigen::Vector3d originalNeighbor2 = data.V.row(n2);
             Eigen::Vector3d newNeighbor2 = mesh_data.V.row(n2);
-            V1.row(j * 3) = (originalVert - originalNeighbor);
-            V2.row(j * 3) = (newVert - newNeighbor);
+            V1.row(j * 3) = data.cotanWeights[i][j * 3 + 2] * (originalVert - originalNeighbor);
+            V2.row(j * 3) = data.cotanWeights[i][j * 3 + 2] * (newVert - newNeighbor);
 
-            V1.row(j * 3 + 1) = (originalVert - originalNeighbor2);
-            V2.row(j * 3 + 1) = (newVert - newNeighbor2);
+            V1.row(j * 3 + 1) = data.cotanWeights[i][j * 3 + 1] * (originalVert - originalNeighbor2);
+            V2.row(j * 3 + 1) = data.cotanWeights[i][j * 3 + 1] * (newVert - newNeighbor2);
 
-            V1.row(j * 3 + 2) = (originalNeighbor - originalNeighbor2);
-            V2.row(j * 3 + 2) = (newNeighbor - newNeighbor2);
+            V1.row(j * 3 + 2) = data.cotanWeights[i][j * 3] * (originalNeighbor - originalNeighbor2);
+            V2.row(j * 3 + 2) = data.cotanWeights[i][j * 3] * (newNeighbor - newNeighbor2);
         }
 
 
-        Eigen::Matrix3d s = V2.transpose() * V1;
         Eigen::Matrix3d rot = getRotation(V1, V2);
         data.R.block<3, 3>(0, i * 3) = rot;
     }
@@ -282,13 +238,13 @@ bool global_distance_step(
             int next = (j + 1) % size;
             int n1 = mesh_data.Hoods[i][j];
             int n2 = mesh_data.Hoods[i][next];
-            insertInB(b, i, n1, data.cotanWeights[i][j * 3 + 2], data.V, rot);
-            insertInB(b, i, n2, data.cotanWeights[i][j * 3 + 1], data.V, rot);
-            insertInB(b, n1, n2, data.cotanWeights[i][j * 3], data.V, rot);
+            //anders probieren. einfach laplacian benutzen und dann direkt edge rein addieren I guess
+            insertInB(b, i, n1, data.cotanWeights[i][j * 3 + 2] * 1, data.V, rot);
+            insertInB(b, i, n2, data.cotanWeights[i][j * 3 + 1] * 1, data.V, rot);
+            insertInB(b, n2, n1, data.cotanWeights[i][j * 3] * 6, data.V, rot);
         }
     }
 
-    int row = 0;
     for (int i = 0; i < data.V.rows(); i++) {
         // Eigen::Matrix3d rot = R.block<3, 3>(0, i * 3);
         Eigen::Vector3d rightSide = Eigen::Vector3d::Zero();
@@ -302,10 +258,9 @@ bool global_distance_step(
             rightSide(1) -= M(3 * i + 1, deletedPoly) * dists[j];
             rightSide(2) -= M(3 * i + 2, deletedPoly) * dists[j];
         }
-        b(row * 3) += rightSide(0);
-        b(row * 3 + 1) += rightSide(1);
-        b(row * 3 + 2) += rightSide(2);
-        row++;
+        b(i * 3) += rightSide(0);
+        b(i * 3 + 1) += rightSide(1);
+        b(i * 3 + 2) += rightSide(2);
     }
 
     Eigen::MatrixXd newM(M.rows(), M.cols() - dists.size());
@@ -418,9 +373,10 @@ TinyAD::ScalarFunction<4, double, long> getFunction(
                               std::vector<Eigen::Vector4<T> > polygons;
                               for (auto f: mesh_data.VertPolygons[v_idx]) {
                                   Eigen::Vector4<T> pol;
-                                  pol = element.variables(f);
                                   if (gons.find(f) != gons.end()) {
                                       pol = gons[f];
+                                  } else {
+                                      pol = element.variables(f);
                                   }
                                   // Eigen::Vector3<T> normal = element.variables(f);
                                   // pol.head(3) = normal;
@@ -435,9 +391,10 @@ TinyAD::ScalarFunction<4, double, long> getFunction(
                                   std::vector<Eigen::Vector4<T> > neighPolygons;
                                   for (auto f: mesh_data.VertPolygons[neighbor]) {
                                       Eigen::Vector4<T> pol;
-                                      pol = element.variables(f);
                                       if (gons.find(f) != gons.end()) {
                                           pol = gons[f];
+                                      } else {
+                                          pol = element.variables(f);
                                       }
                                       // Eigen::Vector3<T> normal = element.variables(f);
                                       // pol.head(3) = normal;
@@ -462,19 +419,20 @@ TinyAD::ScalarFunction<4, double, long> getFunction(
                                   Eigen::Vector3<T> newNeighbor = points[j];
                                   Eigen::Vector3d originalNeighbor2 = data.V.row(n2);
                                   Eigen::Vector3<T> newNeighbor2 = points[next];
-                                  V1.row(j * 3) = (ogVert - originalNeighbor);
-                                  V2.row(j * 3) = (vert - newNeighbor);
+                                  V1.row(j * 3) = data.cotanWeights[v_idx][j * 3 + 2] * (ogVert - originalNeighbor);
+                                  V2.row(j * 3) = data.cotanWeights[v_idx][j * 3 + 2] * (vert - newNeighbor);
 
-                                  V1.row(j * 3 + 1) = (ogVert - originalNeighbor2);
-                                  V2.row(j * 3 + 1) = (vert - newNeighbor2);
+                                  V1.row(j * 3 + 1) =
+                                          data.cotanWeights[v_idx][j * 3 + 1] * (ogVert - originalNeighbor2);
+                                  V2.row(j * 3 + 1) = data.cotanWeights[v_idx][j * 3 + 1] * (vert - newNeighbor2);
 
-                                  V1.row(j * 3 + 2) = (originalNeighbor - originalNeighbor2);
-                                  V2.row(j * 3 + 2) = (newNeighbor - newNeighbor2);
+                                  V1.row(j * 3 + 2) =
+                                          data.cotanWeights[v_idx][j * 3] * (originalNeighbor - originalNeighbor2);
+                                  V2.row(j * 3 + 2) = data.cotanWeights[v_idx][j * 3] * (newNeighbor - newNeighbor2);
                               }
 
                               Eigen::Matrix3<T> Rot = getRotation<T>(V1, V2);
-                              //wrong but will fix later
-                              //TODO: fix later
+
                               T returnValue = 0;
                               for (int j = 0; j < size; j++) {
                                   int next = (j + 1) % size;

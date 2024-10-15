@@ -24,6 +24,7 @@
 #include <TinyAD/ScalarFunction.hh>
 
 #include "custom_arap.h"
+#include "face_arap.h"
 #include "happly.h"
 #include "plane_arap.h"
 #include "poly_mesh_data.h"
@@ -60,6 +61,7 @@ custom_data custom_data;
 poly_mesh_data mesh_data;
 
 plane_arap_data plane_arap_data;
+face_arap_data face_arap_data;
 
 //0.947214,   0.58541,         0,
 //0.8090169943749473, -0.8090169943749473, 0.8090169943749473;
@@ -306,9 +308,7 @@ int main(int argc, char *argv[]) {
     std::cout << rotationMatrix << std::endl;
 
 
-    Eigen::VectorXi conP(1);
-    // conP << 0, 12;
-    conP << 0;
+    Eigen::VectorXi conP(0);
 
     Eigen::VectorXi tempConP(1);
     Eigen::MatrixXd lagrangeMultipliers = Eigen::MatrixXd::Zero(conP.size(), 4);
@@ -335,10 +335,11 @@ int main(int argc, char *argv[]) {
                 b(i) = conP(i);
             }
 
+            face_arap_precomputation(mesh_data, face_arap_data, b);
             plane_arap_precomputation(mesh_data, plane_arap_data, b);
 
 
-            auto func = getFunction(constraints, mesh_data, plane_arap_data);
+            auto func = getFaceFunction(constraints, mesh_data, face_arap_data);
             auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
@@ -370,7 +371,8 @@ int main(int argc, char *argv[]) {
                             for (int j = 0; j < conP.size(); j++) {
                                 b(j) = conP(j);
                             }
-                            plane_arap_precomputation(mesh_data, plane_arap_data, b);
+                            mesh_data.V = face_arap_data.V;
+                            face_arap_precomputation(mesh_data, face_arap_data, b);
                         }
                         constraints.conservativeResize(conP.size(), 3);
                         for (int j = 0; j < conP.size(); j++) {
@@ -390,10 +392,13 @@ int main(int argc, char *argv[]) {
                                     }
                                 }
                             }
-                            getRotations(mesh_data, plane_arap_data);
-                            global_distance_step(bc, mesh_data, plane_arap_data);
+                            getFaceRotations(mesh_data, face_arap_data);
+                            global_face_distance_step(bc, mesh_data, face_arap_data);
                         }
                     }
+                }
+                if (conP.size() <= 0) {
+                    continue;
                 }
 
 
@@ -401,7 +406,7 @@ int main(int argc, char *argv[]) {
                     std::lock_guard<std::mutex> lock(m);
                     redraw = true;
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                // std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
                 if (!onlyGradientDecent) {
                     MatrixXd bc(b.size(), 3);
@@ -414,13 +419,13 @@ int main(int argc, char *argv[]) {
                             }
                         }
                     }
-                    getRotations(mesh_data, plane_arap_data);
-                    global_distance_step(bc, mesh_data, plane_arap_data);
+                    getFaceRotations(mesh_data, face_arap_data);
+                    global_face_distance_step(bc, mesh_data, face_arap_data);
                 }
 
 
-                Polygons = mesh_data.Polygons;
-                calcNewV(mesh_data.Polygons); {
+                calcNewV(mesh_data.Polygons);
+                Polygons = mesh_data.Polygons; {
                     std::lock_guard<std::mutex> lock(m);
                     redraw = true;
                 }
