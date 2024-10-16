@@ -201,45 +201,6 @@ void precomputeMesh(Eigen::MatrixXi polyF) {
         // calculateFaceCenters(polyF, i);
         // calculateHood(polyF, i);
     }
-    // for (int i = 0; i < V.rows(); i++) {
-    //     setConnectivityForOneVertex(polyF, i);
-    // }
-    // //basically just faces, but making sure they are in the right order
-    // for (int i = 0; i < Hoods.size(); i++) {
-    //     std::vector<int> neighbours = Hoods[i];
-    //     std::vector<int> verts;
-    //     for (int j = 0; j < neighbours.size(); j++) {
-    //         int k = (j + 1) % neighbours.size();
-    //         std::vector<Eigen::VectorXi> faces;
-    //         faces.push_back(polyF.row(i));
-    //         faces.push_back(polyF.row(neighbours[j]));
-    //         faces.push_back(polyF.row(neighbours[k]));
-    //         std::set<int> shared_verts;
-    //         std::set<int> shared_verts_temp;
-    //
-    //         for (int v: faces[0]) {
-    //             if (v < 0) {
-    //                 break;
-    //             }
-    //             shared_verts.insert(v);
-    //         }
-    //         for (int idx = 1; idx < 3; idx++) {
-    //             for (int v: faces[idx]) {
-    //                 if (v < 0) {
-    //                     break;
-    //                 }
-    //                 if (shared_verts.count(v) > 0) {
-    //                     shared_verts_temp.insert(v);
-    //                 }
-    //             }
-    //             shared_verts = shared_verts_temp;
-    //             shared_verts_temp = {};
-    //         }
-    //         verts.push_back(*shared_verts.begin());
-    //     }
-    //     HoodVerts[i] = verts;
-    // }
-    // std::cout<< centers << std::endl;
 }
 
 

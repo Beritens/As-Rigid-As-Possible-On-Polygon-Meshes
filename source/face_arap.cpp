@@ -89,41 +89,10 @@ bool face_arap_precomputation(
         }
     }
 
-    // for (int i = 0; i < mesh_data.V.rows(); i++) {
-    //     for (int j = 0; j < mesh_data.Hoods[i].size(); j++) {
-    //         int next = (j + 1) % mesh_data.Hoods[i].size();
-    //         Eigen::Vector3d v_a = mesh_data.V.row(i);
-    //         Eigen::Vector3d v_b = mesh_data.V.row(mesh_data.Hoods[i][j]);
-    //         Eigen::Vector3d v_c = mesh_data.V.row(mesh_data.Hoods[i][next]);
-    //
-    //         double angleA = getAngle(v_b - v_a, v_c - v_a);
-    //         double angleB = getAngle(v_a - v_b, v_c - v_b);
-    //         double angleC = getAngle(v_a - v_c, v_b - v_c);
-    //         // data.cotanWeights[i].push_back(1.0);
-    //         // data.cotanWeights[i].push_back(1.0);
-    //         // data.cotanWeights[i].push_back(1.0);
-    //
-    //         data.cotanWeights[i].push_back(1.0 / tan(angleA));
-    //         data.cotanWeights[i].push_back(1.0 / tan(angleB));
-    //         data.cotanWeights[i].push_back(1.0 / tan(angleC));
-    //     }
-    // }
 
     Eigen::MatrixXd L = Eigen::MatrixXd::Zero(3 * mesh_data.V.rows(),
                                               3 * mesh_data.V.rows());
-    // for (int i = 0; i < mesh_data.V.rows(); i++) {
-    //     std::vector val = mesh_data.Hoods[i];
-    //     int size = val.size();
-    //
-    //     for (int j = 0; j < size; j++) {
-    //         int next = (j + 1) % size;
-    //         int n1 = mesh_data.Hoods[i][j];
-    //         int n2 = mesh_data.Hoods[i][next];
-    //         insertInFaceL(L, i, n1, data.cotanWeights[i][j * 3 + 2] * 1);
-    //         insertInFaceL(L, i, n2, data.cotanWeights[i][j * 3 + 1] * 1);
-    //         insertInFaceL(L, n1, n2, data.cotanWeights[i][j * 3] * 6);
-    //     }
-    // }
+
 
     for (int i = 0; i < data.triangles.size(); i++) {
         for (int j = 0; j < data.triangles[i].size(); j++) {
@@ -142,7 +111,7 @@ bool face_arap_precomputation(
     data.Polygons = mesh_data.Polygons;
     data.b = b;
     data.V = mesh_data.V;
-    data.R = Eigen::MatrixXd(3, mesh_data.V.rows() * 3);
+    data.R = Eigen::MatrixXd(3, mesh_data.F.rows() * 3);
     return true;
 }
 
@@ -159,16 +128,15 @@ void getFaceRotations(poly_mesh_data &mesh_data, face_arap_data &data) {
             Eigen::Vector3d ov_b = data.V.row(tri[1]);
             Eigen::Vector3d ov_c = data.V.row(tri[2]);
             V1.row(j * 3) = data.cotanWeights[i][j][2] * (ov_a - ov_b);
-            V2.row(j * 3) = data.cotanWeights[i][j][2] * (v_a - ov_b);
+            V2.row(j * 3) = data.cotanWeights[i][j][2] * (v_a - v_b);
 
             V1.row(j * 3 + 1) = data.cotanWeights[i][j][1] * (ov_a - ov_c);
-            V2.row(j * 3 + 1) = data.cotanWeights[i][j][1] * (v_a - ov_c);
+            V2.row(j * 3 + 1) = data.cotanWeights[i][j][1] * (v_a - v_c);
 
             V1.row(j * 3 + 2) = data.cotanWeights[i][j][0] * (ov_c - ov_b);
-            V2.row(j * 3 + 2) = data.cotanWeights[i][j][0] * (v_c - ov_b);
+            V2.row(j * 3 + 2) = data.cotanWeights[i][j][0] * (v_c - v_b);
         }
 
-        Eigen::Matrix3d s = V2.transpose() * V1;
         Eigen::Matrix3d rot = getRotation(V1, V2);
         data.R.block<3, 3>(0, i * 3) = rot;
     }
@@ -230,6 +198,7 @@ bool global_face_distance_step(
             }
         }
     }
+    Eigen::MatrixXd NInvT = NInv.transpose();
 
 
     // Eigen::VectorXd nV = NInv * d;
@@ -242,7 +211,7 @@ bool global_face_distance_step(
     }
 
 
-    Eigen::MatrixXd M = data.L * NInv;
+    Eigen::MatrixXd M = NInvT * data.L * NInv;
 
     std::vector<int> gons;
     std::vector<double> dists;
@@ -306,50 +275,72 @@ bool global_face_distance_step(
         }
     }
 
-    for (int i = 0; i < data.V.rows(); i++) {
-        // Eigen::Matrix3d rot = R.block<3, 3>(0, i * 3);
-        Eigen::Vector3d rightSide = Eigen::Vector3d::Zero();
+    Eigen::VectorXd newB = NInvT * b;
 
-        // for (auto v: mesh_data.Hoods[i]) {
-        //     rightSide -= rot * (data.V.row(v) - data.V.row(i)).transpose();
-        // }
-        for (int j = 0; j < gons.size(); j++) {
-            int deletedPoly = gons[j];
-            rightSide(0) -= M(3 * i, deletedPoly) * dists[j];
-            rightSide(1) -= M(3 * i + 1, deletedPoly) * dists[j];
-            rightSide(2) -= M(3 * i + 2, deletedPoly) * dists[j];
-        }
-        b(i * 3) += rightSide(0);
-        b(i * 3 + 1) += rightSide(1);
-        b(i * 3 + 2) += rightSide(2);
+    // std::cout << "should be 0" << std::endl;
+    // std::cout << M * d - b << std::endl;
+    for (int j = 0; j < gons.size(); j++) {
+        int deletedPoly = gons[j];
+        newB(deletedPoly) = dists[j];
+        // rightSide(0) -= M(3 * i, deletedPoly) * dists[j];
+        // rightSide(1) -= M(3 * i + 1, deletedPoly) * dists[j];
+        // rightSide(2) -= M(3 * i + 2, deletedPoly) * dists[j];
     }
 
-    Eigen::MatrixXd newM(M.rows(), M.cols() - dists.size());
-    int y = 0;
-    for (int i = 0; i < M.cols(); i++) {
-        bool deltedCol = false;
+    // for (int i = 0; i < newB.rows(); i++) {
+    //     // Eigen::Matrix3d rot = R.block<3, 3>(0, i * 3);
+    //
+    //     // for (auto v: mesh_data.Hoods[i]) {
+    //     //     rightSide -= rot * (data.V.row(v) - data.V.row(i)).transpose();
+    //     // }
+    //     // for (int j = 0; j < gons.size(); j++) {
+    //     //     int deletedPoly = gons[j];
+    //     //     newB(i) -= M(i, deletedPoly) * dists[j];
+    //     //     // rightSide(0) -= M(3 * i, deletedPoly) * dists[j];
+    //     //     // rightSide(1) -= M(3 * i + 1, deletedPoly) * dists[j];
+    //     //     // rightSide(2) -= M(3 * i + 2, deletedPoly) * dists[j];
+    //     // }
+    //     // b(i * 3 + 1) += rightSide(1);
+    //     // b(i * 3 + 2) += rightSide(2);
+    // }
+
+
+    Eigen::MatrixXd newM(M.rows(), M.cols());
+    for (int i = 0; i < M.rows(); i++) {
+        bool deltedRow = false;
         for (int poly = 0; poly < gons.size(); poly++) {
             if (gons[poly] == i) {
-                deltedCol = true;
+                deltedRow = true;
             }
         }
-        if (deltedCol) {
-            continue;
+        if (deltedRow) {
+            newM(i, i) = 1;
         }
-        for (int j = 0; j < M.rows(); j++) {
-            int x = j;
-            newM(x, y) = M(j, i);
+        for (int j = 0; j < M.cols(); j++) {
+            if (deltedRow) {
+                if (j != i) {
+                    newM(i, j) = 0;
+                }
+            } else {
+                newM(i, j) = M(i, j);
+            }
         }
-        y++;
     }
+
 
     //constraints cover whole mesh
     if (newM.size() == 0) {
         return true;
     }
+    std::cout << "test" << std::endl;
+    std::cout << newM << std::endl;
+    std::cout << newB << std::endl;
 
-    Eigen::VectorXd bestDistances = newM.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b);
-    y = 0;
+    Eigen::VectorXd bestDistances = newM.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(newB);
+    // std::cout << "should be zero" << std::endl;
+    // std::cout << newM * bestDistances - b << std::endl;
+    // std::cout << "R" << std::endl;
+    // std::cout << data.R << std::endl;
     for (int i = 0; i < mesh_data.Polygons.rows(); i++) {
         bool skipped = false;
         for (int poly = 0; poly < gons.size(); poly++) {
@@ -361,9 +352,7 @@ bool global_face_distance_step(
             continue;
         }
 
-        mesh_data.Polygons(i, 3) = bestDistances(y);
-
-        y++;
+        mesh_data.Polygons(i, 3) = bestDistances(i);
     }
 
     return true;
