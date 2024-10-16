@@ -282,27 +282,7 @@ bool global_face_distance_step(
     for (int j = 0; j < gons.size(); j++) {
         int deletedPoly = gons[j];
         newB(deletedPoly) = dists[j];
-        // rightSide(0) -= M(3 * i, deletedPoly) * dists[j];
-        // rightSide(1) -= M(3 * i + 1, deletedPoly) * dists[j];
-        // rightSide(2) -= M(3 * i + 2, deletedPoly) * dists[j];
     }
-
-    // for (int i = 0; i < newB.rows(); i++) {
-    //     // Eigen::Matrix3d rot = R.block<3, 3>(0, i * 3);
-    //
-    //     // for (auto v: mesh_data.Hoods[i]) {
-    //     //     rightSide -= rot * (data.V.row(v) - data.V.row(i)).transpose();
-    //     // }
-    //     // for (int j = 0; j < gons.size(); j++) {
-    //     //     int deletedPoly = gons[j];
-    //     //     newB(i) -= M(i, deletedPoly) * dists[j];
-    //     //     // rightSide(0) -= M(3 * i, deletedPoly) * dists[j];
-    //     //     // rightSide(1) -= M(3 * i + 1, deletedPoly) * dists[j];
-    //     //     // rightSide(2) -= M(3 * i + 2, deletedPoly) * dists[j];
-    //     // }
-    //     // b(i * 3 + 1) += rightSide(1);
-    //     // b(i * 3 + 2) += rightSide(2);
-    // }
 
 
     Eigen::MatrixXd newM(M.rows(), M.cols());

@@ -212,7 +212,7 @@ int main(int argc, char *argv[]) {
     Eigen::MatrixXi polyF;
 
 
-    happly::PLYData plyIn("../test.ply");
+    happly::PLYData plyIn("../blocks.ply");
     std::vector<std::array<double, 3> > vPos = plyIn.getVertexPositions();
     std::vector<std::vector<size_t> > fInd = plyIn.getFaceIndices<size_t>();
     V.conservativeResize(vPos.size(), 3);
@@ -300,7 +300,8 @@ int main(int argc, char *argv[]) {
             plane_arap_precomputation(mesh_data, plane_arap_data, b);
 
 
-            auto func = getFaceFunction(constraints, mesh_data, face_arap_data);
+            // auto func = getFaceFunction(constraints, mesh_data, face_arap_data);
+            auto func = getFunction(constraints, mesh_data, plane_arap_data);
             auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
@@ -332,8 +333,10 @@ int main(int argc, char *argv[]) {
                             for (int j = 0; j < conP.size(); j++) {
                                 b(j) = conP(j);
                             }
-                            mesh_data.V = face_arap_data.V;
-                            face_arap_precomputation(mesh_data, face_arap_data, b);
+                            // mesh_data.V = face_arap_data.V;
+                            // face_arap_precomputation(mesh_data, face_arap_data, b);
+                            mesh_data.V = plane_arap_data.V;
+                            plane_arap_precomputation(mesh_data, plane_arap_data, b);
                         }
                         constraints.conservativeResize(conP.size(), 3);
                         for (int j = 0; j < conP.size(); j++) {
@@ -353,8 +356,11 @@ int main(int argc, char *argv[]) {
                                     }
                                 }
                             }
-                            getFaceRotations(mesh_data, face_arap_data);
-                            global_face_distance_step(bc, mesh_data, face_arap_data);
+                            calcNewV(mesh_data.Polygons);
+                            // getFaceRotations(mesh_data, face_arap_data);
+                            // global_face_distance_step(bc, mesh_data, face_arap_data);
+                            getRotations(mesh_data, plane_arap_data);
+                            global_distance_step(bc, mesh_data, plane_arap_data);
                         }
                     }
                 }
@@ -380,8 +386,10 @@ int main(int argc, char *argv[]) {
                             }
                         }
                     }
-                    getFaceRotations(mesh_data, face_arap_data);
-                    global_face_distance_step(bc, mesh_data, face_arap_data);
+                    // getFaceRotations(mesh_data, face_arap_data);
+                    // global_face_distance_step(bc, mesh_data, face_arap_data);
+                    getRotations(mesh_data, plane_arap_data);
+                    global_distance_step(bc, mesh_data, plane_arap_data);
                 }
 
 
@@ -391,6 +399,7 @@ int main(int argc, char *argv[]) {
                     redraw = true;
                 }
 
+                getRotations(mesh_data, plane_arap_data);
                 x = func.x_from_data([&](int v_idx) {
                     return mesh_data.Polygons.row(v_idx);
                 });

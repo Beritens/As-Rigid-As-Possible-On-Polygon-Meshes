@@ -76,9 +76,9 @@ bool plane_arap_precomputation(
             int next = (j + 1) % size;
             int n1 = mesh_data.Hoods[i][j];
             int n2 = mesh_data.Hoods[i][next];
-            insertInL(L, i, n1, data.cotanWeights[i][j * 3 + 2] * 1);
-            insertInL(L, i, n2, data.cotanWeights[i][j * 3 + 1] * 1);
-            insertInL(L, n1, n2, data.cotanWeights[i][j * 3] * 6);
+            insertInL(L, i, n1, data.cotanWeights[i][j * 3 + 2]);
+            insertInL(L, i, n2, data.cotanWeights[i][j * 3 + 1]);
+            insertInL(L, n1, n2, data.cotanWeights[i][j * 3]);
         }
     }
 
@@ -182,6 +182,7 @@ bool global_distance_step(
             }
         }
     }
+    Eigen::MatrixXd NInvT = NInv.transpose();
 
 
     // Eigen::VectorXd nV = NInv * d;
@@ -194,7 +195,7 @@ bool global_distance_step(
     }
 
 
-    Eigen::MatrixXd M = data.L * NInv;
+    Eigen::MatrixXd M = NInvT * data.L * NInv;
 
     std::vector<int> gons;
     std::vector<double> dists;
@@ -239,47 +240,39 @@ bool global_distance_step(
             int n1 = mesh_data.Hoods[i][j];
             int n2 = mesh_data.Hoods[i][next];
             //anders probieren. einfach laplacian benutzen und dann direkt edge rein addieren I guess
-            insertInB(b, i, n1, data.cotanWeights[i][j * 3 + 2] * 1, data.V, rot);
-            insertInB(b, i, n2, data.cotanWeights[i][j * 3 + 1] * 1, data.V, rot);
-            insertInB(b, n2, n1, data.cotanWeights[i][j * 3] * 6, data.V, rot);
+            insertInB(b, i, n1, data.cotanWeights[i][j * 3 + 2], data.V, rot);
+            insertInB(b, i, n2, data.cotanWeights[i][j * 3 + 1], data.V, rot);
+            insertInB(b, n2, n1, data.cotanWeights[i][j * 3], data.V, rot);
         }
     }
 
-    for (int i = 0; i < data.V.rows(); i++) {
-        // Eigen::Matrix3d rot = R.block<3, 3>(0, i * 3);
-        Eigen::Vector3d rightSide = Eigen::Vector3d::Zero();
+    Eigen::VectorXd newB = NInvT * b;
 
-        // for (auto v: mesh_data.Hoods[i]) {
-        //     rightSide -= rot * (data.V.row(v) - data.V.row(i)).transpose();
-        // }
-        for (int j = 0; j < gons.size(); j++) {
-            int deletedPoly = gons[j];
-            rightSide(0) -= M(3 * i, deletedPoly) * dists[j];
-            rightSide(1) -= M(3 * i + 1, deletedPoly) * dists[j];
-            rightSide(2) -= M(3 * i + 2, deletedPoly) * dists[j];
-        }
-        b(i * 3) += rightSide(0);
-        b(i * 3 + 1) += rightSide(1);
-        b(i * 3 + 2) += rightSide(2);
+    for (int j = 0; j < gons.size(); j++) {
+        int deletedPoly = gons[j];
+        newB(deletedPoly) = dists[j];
     }
 
-    Eigen::MatrixXd newM(M.rows(), M.cols() - dists.size());
-    int y = 0;
-    for (int i = 0; i < M.cols(); i++) {
-        bool deltedCol = false;
+    Eigen::MatrixXd newM(M.rows(), M.cols());
+    for (int i = 0; i < M.rows(); i++) {
+        bool deltedRow = false;
         for (int poly = 0; poly < gons.size(); poly++) {
             if (gons[poly] == i) {
-                deltedCol = true;
+                deltedRow = true;
             }
         }
-        if (deltedCol) {
-            continue;
+        if (deltedRow) {
+            newM(i, i) = 1;
         }
-        for (int j = 0; j < M.rows(); j++) {
-            int x = j;
-            newM(x, y) = M(j, i);
+        for (int j = 0; j < M.cols(); j++) {
+            if (deltedRow) {
+                if (j != i) {
+                    newM(i, j) = 0;
+                }
+            } else {
+                newM(i, j) = M(i, j);
+            }
         }
-        y++;
     }
 
     //constraints cover whole mesh
@@ -287,8 +280,7 @@ bool global_distance_step(
         return true;
     }
 
-    Eigen::VectorXd bestDistances = newM.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b);
-    y = 0;
+    Eigen::VectorXd bestDistances = newM.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(newB);
     for (int i = 0; i < mesh_data.Polygons.rows(); i++) {
         bool skipped = false;
         for (int poly = 0; poly < gons.size(); poly++) {
@@ -300,9 +292,7 @@ bool global_distance_step(
             continue;
         }
 
-        mesh_data.Polygons(i, 3) = bestDistances(y);
-
-        y++;
+        mesh_data.Polygons(i, 3) = bestDistances(i);
     }
 
     return true;
