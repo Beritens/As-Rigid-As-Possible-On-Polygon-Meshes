@@ -53,13 +53,19 @@ inline int faceSize(Eigen::VectorXi face) {
 
 inline void calculatePolygons(poly_mesh_data &data) {
     for (int i = 0; i < data.F.rows(); i++) {
+        int size = faceSize(data.F.row(i));
         data.Polygons.conservativeResize(data.Polygons.rows() + 1, 4);
         Eigen::Vector3d pointa = data.V.row(data.F(i, 0));
-        Eigen::Vector3d pointb = data.V.row(data.F(i, 1));
-        Eigen::Vector3d pointc = data.V.row(data.F(i, 2));
-        Eigen::Vector3d a = pointb - pointa;
-        Eigen::Vector3d b = pointc - pointa;
-        Eigen::Vector3d normal = a.cross(b).normalized();
+        Eigen::Vector3d normal = Eigen::Vector3d::Zero();
+        for (int j = 1; j < size; j++) {
+            int k = ((j) % (size - 1)) + 1;
+            Eigen::Vector3d pointb = data.V.row(data.F(i, j));
+            Eigen::Vector3d pointc = data.V.row(data.F(i, k));
+            Eigen::Vector3d a = pointb - pointa;
+            Eigen::Vector3d b = pointc - pointa;
+            normal += a.cross(b).normalized();
+        }
+        normal = normal.normalized();
         double dist = pointa.dot(normal);
         Eigen::Vector4d polygon;
         polygon << normal, dist;

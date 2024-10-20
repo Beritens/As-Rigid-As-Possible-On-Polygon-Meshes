@@ -212,7 +212,7 @@ int main(int argc, char *argv[]) {
     Eigen::MatrixXi polyF;
 
 
-    happly::PLYData plyIn("../blocks.ply");
+    happly::PLYData plyIn("../test.ply");
     std::vector<std::array<double, 3> > vPos = plyIn.getVertexPositions();
     std::vector<std::vector<size_t> > fInd = plyIn.getFaceIndices<size_t>();
     V.conservativeResize(vPos.size(), 3);
@@ -399,7 +399,7 @@ int main(int argc, char *argv[]) {
                     redraw = true;
                 }
 
-                getRotations(mesh_data, plane_arap_data);
+                // getRotations(mesh_data, plane_arap_data);
                 x = func.x_from_data([&](int v_idx) {
                     return mesh_data.Polygons.row(v_idx);
                 });
