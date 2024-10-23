@@ -27,6 +27,7 @@ Eigen::Vector3<T> getPoint(Eigen::Vector4<T> &poly1, Eigen::Vector4<T> &poly2, E
     Eigen::Vector3<T> normal2 = poly2.head(3).normalized();
     Eigen::Vector3<T> normal3 = poly3.head(3).normalized();
 
+
     Eigen::Matrix3<T> m;
     m.row(0) = normal1;
     m.row(1) = normal2;
@@ -36,7 +37,9 @@ Eigen::Vector3<T> getPoint(Eigen::Vector4<T> &poly1, Eigen::Vector4<T> &poly2, E
     b << poly1(3), poly2(3), poly3(3);
 
     //Eigen::Vector3<T> x = m.colPivHouseholderQr().solve(b);
-    Eigen::Vector3<T> x = m.partialPivLu().solve(b);
+    // Eigen::Vector3<T> x = m.partialPivLu().solve(b);
+    // direct inverse might be faster for small matrices
+    Eigen::Vector3<T> x = m.inverse() * b;
     //Eigen::Vector3<T> x = normal1 * poly1(3) + normal2 * poly2(3) + normal3 * poly3(3);
     return x;
 }

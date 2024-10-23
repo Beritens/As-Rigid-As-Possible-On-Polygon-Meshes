@@ -408,16 +408,21 @@ int main(int argc, char *argv[]) {
                     return mesh_data.Polygons.row(v_idx).head(3).normalized();
                 });
 
+                // auto [f, g] = useBlockFunc
+                //                   ? funcBlock.eval_with_gradient(x_block)
+                //                   : func.eval_with_gradient(x);
                 auto [f, g, H_proj] = useBlockFunc
                                           ? funcBlock.eval_with_hessian_proj(x_block)
                                           : func.eval_with_hessian_proj(x);
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
+                // Eigen::VectorXd d = -g * 0.04;
                 Eigen::VectorXd d = cg_solver.compute(
                     H_proj + 1e-9 * TinyAD::identity<double>(useBlockFunc ? x_block.size() : x.size())).solve(-g);
-                // Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver);
-                if (TinyAD::newton_decrement(d, g) < convergence_eps) {
-                    //break;
-                }
+                // std::cout << H_proj << std::endl;
+                // Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver, 2.0);
+                // if (TinyAD::newton_decrement(d, g) < convergence_eps) {
+                //     //break;
+                // }
                 if (useBlockFunc) {
                     x_block = TinyAD::line_search(x_block, d, f, g, funcBlock);
                 } else {
