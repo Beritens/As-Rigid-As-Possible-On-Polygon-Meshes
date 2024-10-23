@@ -39,7 +39,7 @@ bool face_arap_precomputation(
     using namespace std;
     using namespace Eigen;
     // number of vertices
-    const int n = mesh_data.V.rows();
+    const int n = mesh_data.originalV.rows();
 
 
     data.cotanWeights.clear();
@@ -47,34 +47,116 @@ bool face_arap_precomputation(
     data.cotanWeights.resize(mesh_data.F.rows());
     data.triangles.resize(mesh_data.F.rows());
 
+    data.B = Eigen::MatrixXd::Identity(3 * (mesh_data.originalV.rows() + mesh_data.F.rows()),
+                                       3 * mesh_data.originalV.rows());
+    data.simpleB = Eigen::MatrixXd::Identity((mesh_data.originalV.rows() + mesh_data.F.rows()),
+                                             mesh_data.originalV.rows());
+
+    Eigen::MatrixXd virtualVerts(mesh_data.F.rows(), 3);
+    //finding virtual point
+    // took this from here: https://www.cs.jhu.edu/~misha/MyPapers/EUROG20.pdf
+
     for (int i = 0; i < mesh_data.F.rows(); i++) {
         int size = faceSize(mesh_data.F.row(i));
-        std::vector<Eigen::Vector3d> vecs;
+        Eigen::Vector3d virtVert = Vector3d::Zero();
+        Eigen::MatrixXd A(size + 1, size);
+        Eigen::VectorXd vb(size + 1);
+
         for (int j = 0; j < size; j++) {
-            vecs.push_back(mesh_data.V.row(mesh_data.F(i, j)));
-        }
-        std::vector<std::vector<int> > triangles = calculateTriangle(vecs, mesh_data.Polygons.row(i).head(3));
-        std::vector<std::vector<int> > tris;
-        for (auto tri: triangles) {
-            std::vector<int> indexes;
-            for (int j = 0; j < 3; j++) {
-                if (tri[j] < 0 || tri[j] >= size) {
-                    continue;
+            double sumB = 0;
+            for (int k = 0; k < size; k++) {
+                double sumA = 0;
+                for (int l = 1; l < size; l++) {
+                    Eigen::Vector3d xk = mesh_data.originalV.row(mesh_data.F(i, k));
+                    Eigen::Vector3d xj = mesh_data.originalV.row(mesh_data.F(i, j));
+                    Eigen::Vector3d xjplus = mesh_data.originalV.row(mesh_data.F(i, (j + 1) % size));
+                    Eigen::Vector3d xl = mesh_data.originalV.row(mesh_data.F(i, l));
+                    Eigen::Vector3d xlplus = mesh_data.originalV.row(mesh_data.F(i, (l + 1) % size));
+                    sumA += (xk.cross(xlplus - xl)).dot(xj.cross(xlplus - xl));
                 }
-                indexes.push_back(mesh_data.F(i, tri[j]));
+                A(j, k) = 2 * sumA;
             }
-            tris.push_back(indexes);
+            for (int l = 1; l < size; l++) {
+                Eigen::Vector3d xj = mesh_data.originalV.row(mesh_data.F(i, j));
+                Eigen::Vector3d xjplus = mesh_data.originalV.row(mesh_data.F(i, (j + 1) % size));
+                Eigen::Vector3d xl = mesh_data.originalV.row(mesh_data.F(i, l));
+                Eigen::Vector3d xlplus = mesh_data.originalV.row(mesh_data.F(i, (l + 1) % size));
+                sumB += (xj.cross(xlplus - xl)).dot((xlplus - xl).cross(xl));
+            }
+            vb(j) = 2 * sumB;
+
+
+            // virtVert += mesh_data.originalV.row(mesh_data.F(i, j)) / (double) size;
+            // data.simpleB((mesh_data.originalV.rows() + i), (mesh_data.F(i, j))) = 1.0 / (double) size;
+            // data.B(3 * (mesh_data.originalV.rows() + i), 3 * (mesh_data.F(i, j))) = 1.0 / (double) size;
+            // data.B(3 * (mesh_data.originalV.rows() + i) + 1, 3 * (mesh_data.F(i, j)) + 1) = 1.0 / (double) size;
+            // data.B(3 * (mesh_data.originalV.rows() + i) + 2, 3 * (mesh_data.F(i, j)) + 2) = 1.0 / (double) size;
+            A(size, j) = -1;
+        }
+        vb(size) = 1;
+
+        Eigen::VectorXd w = A.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(-vb);
+
+        for (int j = 0; j < size; j++) {
+            virtVert += mesh_data.originalV.row(mesh_data.F(i, j)) * w(j);
+            data.simpleB((mesh_data.originalV.rows() + i), (mesh_data.F(i, j))) = w(j);
+            data.B(3 * (mesh_data.originalV.rows() + i), 3 * (mesh_data.F(i, j))) = w(j);
+            data.B(3 * (mesh_data.originalV.rows() + i) + 1, 3 * (mesh_data.F(i, j)) + 1) = w(j);
+            data.B(3 * (mesh_data.originalV.rows() + i) + 2, 3 * (mesh_data.F(i, j)) + 2) = w(j);
+        }
+
+        virtualVerts.row(i) = virtVert;
+    }
+
+    std::cout << "B" << std::endl;
+    std::cout << data.B << std::endl;
+
+
+    data.V = Eigen::MatrixXd(mesh_data.originalV.rows() + virtualVerts.rows(), 3);
+    data.V << mesh_data.originalV, virtualVerts;
+
+    for (int i = 0; i < mesh_data.F.rows(); i++) {
+        std::vector<std::vector<int> > tris;
+        int size = faceSize(mesh_data.F.row(i));
+        for (int j = 0; j < size; j++) {
+            int next = (j + 1) % size;
+            std::vector<int> tri;
+            tri.push_back(mesh_data.originalV.rows() + i);
+            tri.push_back(mesh_data.F(i, j));
+            tri.push_back(mesh_data.F(i, next));
+            tris.push_back(tri);
         }
         data.triangles[i] = tris;
     }
+
+    // for (int i = 0; i < mesh_data.F.rows(); i++) {
+    //     int size = faceSize(mesh_data.F.row(i));
+    //     std::vector<Eigen::Vector3d> vecs;
+    //     for (int j = 0; j < size; j++) {
+    //         vecs.push_back(mesh_data.V.row(mesh_data.F(i, j)));
+    //     }
+    //     std::vector<std::vector<int> > triangles = calculateTriangle(vecs, mesh_data.Polygons.row(i).head(3));
+    //     std::vector<std::vector<int> > tris;
+    //     for (auto tri: triangles) {
+    //         std::vector<int> indexes;
+    //         for (int j = 0; j < 3; j++) {
+    //             if (tri[j] < 0 || tri[j] >= size) {
+    //                 continue;
+    //             }
+    //             indexes.push_back(mesh_data.F(i, tri[j]));
+    //         }
+    //         tris.push_back(indexes);
+    //     }
+    //     data.triangles[i] = tris;
+    // }
 
     for (int i = 0; i < data.triangles.size(); i++) {
         data.cotanWeights[i].resize(data.triangles[i].size());
         for (int j = 0; j < data.triangles[i].size(); j++) {
             std::vector<int> tri = data.triangles[i][j];
-            Eigen::Vector3d v_a = mesh_data.V.row(tri[0]);
-            Eigen::Vector3d v_b = mesh_data.V.row(tri[1]);
-            Eigen::Vector3d v_c = mesh_data.V.row(tri[2]);
+            Eigen::Vector3d v_a = data.V.row(tri[0]);
+            Eigen::Vector3d v_b = data.V.row(tri[1]);
+            Eigen::Vector3d v_c = data.V.row(tri[2]);
 
             double angleA = getAngle(v_b - v_a, v_c - v_a);
             double angleB = getAngle(v_a - v_b, v_c - v_b);
@@ -90,8 +172,8 @@ bool face_arap_precomputation(
     }
 
 
-    Eigen::MatrixXd L = Eigen::MatrixXd::Zero(3 * mesh_data.V.rows(),
-                                              3 * mesh_data.V.rows());
+    Eigen::MatrixXd L = Eigen::MatrixXd::Zero(3 * data.V.rows(),
+                                              3 * data.V.rows());
 
 
     for (int i = 0; i < data.triangles.size(); i++) {
@@ -106,24 +188,24 @@ bool face_arap_precomputation(
     }
 
     data.L = L;
-    std::cout << "L" << std::endl;
-    std::cout << L << std::endl;
+
     data.Polygons = mesh_data.Polygons;
     data.b = b;
-    data.V = mesh_data.V;
     data.R = Eigen::MatrixXd(3, mesh_data.F.rows() * 3);
+    data.Bt = data.B.transpose();
     return true;
 }
 
 void getFaceRotations(poly_mesh_data &mesh_data, face_arap_data &data) {
+    Eigen::MatrixXd withVirtVerts = data.simpleB * mesh_data.V;
     for (int i = 0; i < data.triangles.size(); i++) {
         Eigen::MatrixXd V1 = Eigen::MatrixXd::Zero(data.triangles[i].size() * 3, 3);
         Eigen::MatrixXd V2 = Eigen::MatrixXd::Zero(data.triangles[i].size() * 3, 3);
         for (int j = 0; j < data.triangles[i].size(); j++) {
             std::vector<int> tri = data.triangles[i][j];
-            Eigen::Vector3d v_a = mesh_data.V.row(tri[0]);
-            Eigen::Vector3d v_b = mesh_data.V.row(tri[1]);
-            Eigen::Vector3d v_c = mesh_data.V.row(tri[2]);
+            Eigen::Vector3d v_a = withVirtVerts.row(tri[0]);
+            Eigen::Vector3d v_b = withVirtVerts.row(tri[1]);
+            Eigen::Vector3d v_c = withVirtVerts.row(tri[2]);
             Eigen::Vector3d ov_a = data.V.row(tri[0]);
             Eigen::Vector3d ov_b = data.V.row(tri[1]);
             Eigen::Vector3d ov_c = data.V.row(tri[2]);
@@ -170,7 +252,7 @@ bool global_face_distance_step(
 
     Eigen::VectorXd nV(data.V.rows() * 3);
 
-    for (int i = 0; i < data.V.rows(); i++) {
+    for (int i = 0; i < mesh_data.originalV.rows(); i++) {
         std::set<int> polygons = mesh_data.VertPolygons[i];
         MatrixXd N(polygons.size(), 3);
         Eigen::VectorXd ds(polygons.size());
@@ -190,7 +272,7 @@ bool global_face_distance_step(
         nIdx.push_back(idx);
     }
 
-    Eigen::MatrixXd NInv = Eigen::MatrixXd::Zero(data.V.rows() * 3, mesh_data.Polygons.rows());
+    Eigen::MatrixXd NInv = Eigen::MatrixXd::Zero(mesh_data.originalV.rows() * 3, mesh_data.Polygons.rows());
     for (int i = 0; i < nIdx.size(); i++) {
         for (int j = 0; j < 3; j++) {
             for (int k = 0; k < nIdx[i].size(); k++) {
@@ -211,7 +293,7 @@ bool global_face_distance_step(
     }
 
 
-    Eigen::MatrixXd M = NInvT * data.L * NInv;
+    Eigen::MatrixXd M = NInvT * data.Bt * data.L * data.B * NInv;
 
     std::vector<int> gons;
     std::vector<double> dists;
@@ -275,7 +357,7 @@ bool global_face_distance_step(
         }
     }
 
-    Eigen::VectorXd newB = NInvT * b;
+    Eigen::VectorXd newB = NInvT * data.Bt * b;
 
     // std::cout << "should be 0" << std::endl;
     // std::cout << M * d - b << std::endl;
@@ -312,9 +394,6 @@ bool global_face_distance_step(
     if (newM.size() == 0) {
         return true;
     }
-    std::cout << "test" << std::endl;
-    std::cout << newM << std::endl;
-    std::cout << newB << std::endl;
 
     Eigen::VectorXd bestDistances = newM.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(newB);
     // std::cout << "should be zero" << std::endl;
@@ -403,6 +482,7 @@ TinyAD::ScalarFunction<4, double, long> getFaceFunction(
 
 
                               std::map<int, Eigen::Vector3<T> > points;
+                              Eigen::Vector3<T> virtVert = Eigen::Vector3d::Zero();
 
                               for (int i = 0; i < size; i++) {
                                   std::vector<Eigen::Vector4<T> > neighPolygons;
@@ -421,7 +501,10 @@ TinyAD::ScalarFunction<4, double, long> getFaceFunction(
                                   Eigen::Vector3<T> neighborVert = getPoint<T>(
                                       neighPolygons[0], neighPolygons[1], neighPolygons[2]);
                                   points[mesh_data.F(f_idx, i)] = neighborVert;
+                                  virtVert += neighborVert * data.B(3 * (f_idx + mesh_data.originalV.rows()),
+                                                                    3 * mesh_data.F(f_idx, i));
                               }
+                              points[mesh_data.V.rows() + f_idx] = virtVert;
 
                               Eigen::MatrixXd V1 = Eigen::MatrixXd::Zero(data.triangles[f_idx].size() * 3, 3);
                               Eigen::MatrixX<T> V2 = Eigen::MatrixXd::Zero(data.triangles[f_idx].size() * 3, 3);

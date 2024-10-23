@@ -40,18 +40,18 @@ bool plane_arap_precomputation(
     using namespace std;
     using namespace Eigen;
     // number of vertices
-    const int n = mesh_data.V.rows();
+    const int n = mesh_data.originalV.rows();
 
 
     data.cotanWeights.clear();
-    data.cotanWeights.resize(mesh_data.V.rows());
+    data.cotanWeights.resize(mesh_data.originalV.rows());
 
-    for (int i = 0; i < mesh_data.V.rows(); i++) {
+    for (int i = 0; i < mesh_data.originalV.rows(); i++) {
         for (int j = 0; j < mesh_data.Hoods[i].size(); j++) {
             int next = (j + 1) % mesh_data.Hoods[i].size();
-            Eigen::Vector3d v_a = mesh_data.V.row(i);
-            Eigen::Vector3d v_b = mesh_data.V.row(mesh_data.Hoods[i][j]);
-            Eigen::Vector3d v_c = mesh_data.V.row(mesh_data.Hoods[i][next]);
+            Eigen::Vector3d v_a = mesh_data.originalV.row(i);
+            Eigen::Vector3d v_b = mesh_data.originalV.row(mesh_data.Hoods[i][j]);
+            Eigen::Vector3d v_c = mesh_data.originalV.row(mesh_data.Hoods[i][next]);
 
             double angleA = getAngle(v_b - v_a, v_c - v_a);
             double angleB = getAngle(v_a - v_b, v_c - v_b);
@@ -66,8 +66,8 @@ bool plane_arap_precomputation(
         }
     }
 
-    Eigen::MatrixXd L = Eigen::MatrixXd::Zero(3 * mesh_data.V.rows(),
-                                              3 * mesh_data.V.rows());
+    Eigen::MatrixXd L = Eigen::MatrixXd::Zero(3 * mesh_data.originalV.rows(),
+                                              3 * mesh_data.originalV.rows());
     for (int i = 0; i < mesh_data.V.rows(); i++) {
         std::vector val = mesh_data.Hoods[i];
         int size = val.size();
@@ -91,7 +91,7 @@ bool plane_arap_precomputation(
     std::cout << L << std::endl;
     data.Polygons = mesh_data.Polygons;
     data.b = b;
-    data.V = mesh_data.V;
+    data.V = mesh_data.originalV;
     data.R = Eigen::MatrixXd(3, mesh_data.V.rows() * 3);
     return true;
 }

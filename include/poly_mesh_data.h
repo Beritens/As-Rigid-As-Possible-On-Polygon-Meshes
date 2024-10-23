@@ -13,6 +13,7 @@
 
 struct poly_mesh_data {
     Eigen::MatrixXd V;
+    Eigen::MatrixXd originalV;
     Eigen::MatrixXi F;
     Eigen::MatrixXi T;
     int triangleCount;
@@ -78,6 +79,7 @@ inline void calculatePolygons(poly_mesh_data &data) {
 
 inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, Eigen::MatrixXi &F) {
     data.V = V;
+    data.originalV = V;
     data.F = F;
     calculatePolygons(data);
     std::map<int, std::set<int> > tempHoods;
