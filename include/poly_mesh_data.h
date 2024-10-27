@@ -77,6 +77,13 @@ inline void calculatePolygons(poly_mesh_data &data) {
     }
 }
 
+inline void makeDual(poly_mesh_data &data) {
+    for (int i = 0; i < data.originalV.rows(); i++) {
+        for (int j = 0; j < data.Hoods[i].size(); j++) {
+        }
+    }
+}
+
 inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, Eigen::MatrixXi &F) {
     data.V = V;
     data.originalV = V;
@@ -84,6 +91,8 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, Eigen
     calculatePolygons(data);
     std::map<int, std::set<int> > tempHoods;
     data.triangleCount = 0;
+    data.Hoods.clear();
+    data.VertPolygons.clear();
 
     //get neighbours
     for (int i = 0; i < F.rows(); i++) {

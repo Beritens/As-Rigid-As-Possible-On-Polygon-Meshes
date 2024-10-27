@@ -506,27 +506,30 @@ TinyAD::ScalarFunction<4, double, long> getFaceFunction(
                               }
                               points[mesh_data.V.rows() + f_idx] = virtVert;
 
-                              Eigen::MatrixXd V1 = Eigen::MatrixXd::Zero(data.triangles[f_idx].size() * 3, 3);
-                              Eigen::MatrixX<T> V2 = Eigen::MatrixXd::Zero(data.triangles[f_idx].size() * 3, 3);
-                              for (int j = 0; j < data.triangles[f_idx].size(); j++) {
-                                  std::vector<int> tri = data.triangles[f_idx][j];
-                                  Eigen::Vector3<T> v_a = points[tri[0]];
-                                  Eigen::Vector3<T> v_b = points[tri[1]];
-                                  Eigen::Vector3<T> v_c = points[tri[2]];
-                                  Eigen::Vector3d ov_a = data.V.row(tri[0]);
-                                  Eigen::Vector3d ov_b = data.V.row(tri[1]);
-                                  Eigen::Vector3d ov_c = data.V.row(tri[2]);
-                                  V1.row(j * 3) = data.cotanWeights[f_idx][j][2] * (ov_a - ov_b);
-                                  V2.row(j * 3) = data.cotanWeights[f_idx][j][2] * (v_a - v_b);
+                              // Eigen::MatrixXd V1 = Eigen::MatrixXd::Zero(data.triangles[f_idx].size() * 3, 3);
+                              // Eigen::MatrixX<T> V2 = Eigen::MatrixXd::Zero(data.triangles[f_idx].size() * 3, 3);
+                              // for (int j = 0; j < data.triangles[f_idx].size(); j++) {
+                              //     std::vector<int> tri = data.triangles[f_idx][j];
+                              //     Eigen::Vector3<T> v_a = points[tri[0]];
+                              //     Eigen::Vector3<T> v_b = points[tri[1]];
+                              //     Eigen::Vector3<T> v_c = points[tri[2]];
+                              //     Eigen::Vector3d ov_a = data.V.row(tri[0]);
+                              //     Eigen::Vector3d ov_b = data.V.row(tri[1]);
+                              //     Eigen::Vector3d ov_c = data.V.row(tri[2]);
+                              //     V1.row(j * 3) = data.cotanWeights[f_idx][j][2] * (ov_a - ov_b);
+                              //     V2.row(j * 3) = data.cotanWeights[f_idx][j][2] * (v_a - v_b);
+                              //
+                              //     V1.row(j * 3 + 1) = data.cotanWeights[f_idx][j][1] * (ov_a - ov_c);
+                              //     V2.row(j * 3 + 1) = data.cotanWeights[f_idx][j][1] * (v_a - v_c);
+                              //
+                              //     V1.row(j * 3 + 2) = data.cotanWeights[f_idx][j][0] * (ov_c - ov_b);
+                              //     V2.row(j * 3 + 2) = data.cotanWeights[f_idx][j][0] * (v_c - v_b);
+                              // }
+                              //
+                              // Eigen::Matrix3<T> Rot = getRotation<T>(V1, V2);
 
-                                  V1.row(j * 3 + 1) = data.cotanWeights[f_idx][j][1] * (ov_a - ov_c);
-                                  V2.row(j * 3 + 1) = data.cotanWeights[f_idx][j][1] * (v_a - v_c);
 
-                                  V1.row(j * 3 + 2) = data.cotanWeights[f_idx][j][0] * (ov_c - ov_b);
-                                  V2.row(j * 3 + 2) = data.cotanWeights[f_idx][j][0] * (v_c - v_b);
-                              }
-
-                              Eigen::Matrix3<T> Rot = getRotation<T>(V1, V2);
+                              Eigen::Matrix3d Rot = data.R.block<3, 3>(0, f_idx * 3);
 
                               T returnValue = 0;
                               // for (int j = 0; j < size; j++) {

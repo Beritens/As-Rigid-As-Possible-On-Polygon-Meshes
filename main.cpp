@@ -300,8 +300,8 @@ int main(int argc, char *argv[]) {
             plane_arap_precomputation(mesh_data, plane_arap_data, b);
 
 
-            auto func = getFaceFunction(constraints, mesh_data, face_arap_data);
-            // auto func = getFunction(constraints, mesh_data, plane_arap_data);
+            // auto func = getFaceFunction(constraints, mesh_data, face_arap_data);
+            auto func = getFunction(constraints, mesh_data, plane_arap_data);
             auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
@@ -336,8 +336,8 @@ int main(int argc, char *argv[]) {
                             // mesh_data.V = face_arap_data.V;
 
                             // mesh_data.V = plane_arap_data.V;
-                            face_arap_precomputation(mesh_data, face_arap_data, b);
-                            // plane_arap_precomputation(mesh_data, plane_arap_data, b);
+                            // face_arap_precomputation(mesh_data, face_arap_data, b);
+                            plane_arap_precomputation(mesh_data, plane_arap_data, b);
                         }
                         constraints.conservativeResize(conP.size(), 3);
                         for (int j = 0; j < conP.size(); j++) {
@@ -358,10 +358,10 @@ int main(int argc, char *argv[]) {
                                 }
                             }
                             calcNewV(mesh_data.Polygons);
-                            getFaceRotations(mesh_data, face_arap_data);
-                            global_face_distance_step(bc, mesh_data, face_arap_data);
-                            // getRotations(mesh_data, plane_arap_data);
-                            // global_distance_step(bc, mesh_data, plane_arap_data);
+                            // getFaceRotations(mesh_data, face_arap_data);
+                            // global_face_distance_step(bc, mesh_data, face_arap_data);
+                            getRotations(mesh_data, plane_arap_data);
+                            global_distance_step(bc, mesh_data, plane_arap_data);
                         }
                     }
                 }
@@ -387,10 +387,10 @@ int main(int argc, char *argv[]) {
                             }
                         }
                     }
-                    getFaceRotations(mesh_data, face_arap_data);
-                    global_face_distance_step(bc, mesh_data, face_arap_data);
-                    // getRotations(mesh_data, plane_arap_data);
-                    // global_distance_step(bc, mesh_data, plane_arap_data);
+                    // getFaceRotations(mesh_data, face_arap_data);
+                    // global_face_distance_step(bc, mesh_data, face_arap_data);
+                    getRotations(mesh_data, plane_arap_data);
+                    global_distance_step(bc, mesh_data, plane_arap_data);
                 }
 
 
