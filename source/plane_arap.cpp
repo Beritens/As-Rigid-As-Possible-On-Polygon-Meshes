@@ -326,9 +326,9 @@ TinyAD::ScalarFunction<4, double, long> getFunction(
                                   }
                                   for (auto v: mesh_data.Hoods[v_idx]) {
                                       for (auto p: mesh_data.VertPolygons[v]) {
-                                          int size = faceSize(mesh_data.F.row(p));
+                                          int size = mesh_data.F[i].size();
                                           for (int fi = 0; fi < size; fi++) {
-                                              if (mesh_data.F(p, fi) == data.b(i)) {
+                                              if (mesh_data.F[p][fi] == data.b(i)) {
                                                   localConstrainsIndex.push_back(i);
                                               }
                                           }
@@ -478,9 +478,9 @@ TinyAD::ScalarFunction<3, double, long> getBlockFunction(
                                   }
                                   for (auto v: mesh_data.Hoods[v_idx]) {
                                       for (auto p: mesh_data.VertPolygons[v]) {
-                                          int size = faceSize(mesh_data.F.row(p));
+                                          int size = mesh_data.F[i].size();
                                           for (int fi = 0; fi < size; fi++) {
-                                              if (mesh_data.F(p, fi) == data.b(i)) {
+                                              if (mesh_data.F[p][fi] == data.b(i)) {
                                                   localConstrainsIndex.push_back(i);
                                               }
                                           }
@@ -611,9 +611,9 @@ TinyAD::ScalarFunction<4, double, long> getEdgeFunction(
                                      localConstrainsIndex.push_back(i);
                                  }
                                  for (auto p: faces) {
-                                     int size = faceSize(mesh_data.F.row(p));
+                                     int size = mesh_data.F[i].size();
                                      for (int fi = 0; fi < size; fi++) {
-                                         if (mesh_data.F(p, fi) == data.b(i)) {
+                                         if (mesh_data.F[p][fi] == data.b(i)) {
                                              localConstrainsIndex.push_back(i);
                                          }
                                      }

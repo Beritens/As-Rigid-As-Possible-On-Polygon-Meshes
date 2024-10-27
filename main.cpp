@@ -51,7 +51,7 @@ Eigen::MatrixXd originalPolygons;
 Eigen::MatrixXd Verts;
 Eigen::MatrixXi Ff;
 Eigen::MatrixXd V;
-Eigen::MatrixXi F;
+// Eigen::MatrixXi F;
 Eigen::VectorXi S, b;
 Eigen::RowVector3d mid;
 double anim_t = 0.0;
@@ -87,18 +87,11 @@ void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &po
 }
 
 
-void calculateFaceMatrixAndPolygons(Eigen::MatrixXi polyF, int face) {
-    int size = faceSize(polyF.row(face));
-    for (int j = 1; j < size - 1; j++) {
-        F.conservativeResize(F.rows() + 1, 3);
-        F(F.rows() - 1, 0) = polyF(face, 0);
-        F(F.rows() - 1, 1) = polyF(face, j);
-        F(F.rows() - 1, 2) = polyF(face, (j + 1) % size);
-    }
+void calculateFaceMatrixAndPolygons(std::vector<std::vector<int> > polyF, int face) {
     Polygons.conservativeResize(Polygons.rows() + 1, 4);
-    Eigen::Vector3d pointa = V.row(polyF(face, 0));
-    Eigen::Vector3d pointb = V.row(polyF(face, 1));
-    Eigen::Vector3d pointc = V.row(polyF(face, 2));
+    Eigen::Vector3d pointa = V.row(polyF[face][0]);
+    Eigen::Vector3d pointb = V.row(polyF[face][1]);
+    Eigen::Vector3d pointc = V.row(polyF[face][2]);
     Eigen::Vector3d a = pointb - pointa;
     Eigen::Vector3d b = pointc - pointa;
     Eigen::Vector3d normal = a.cross(b).normalized();
@@ -195,8 +188,8 @@ void calculateFaceMatrixAndPolygons(Eigen::MatrixXi polyF, int face) {
 // }
 
 
-void precomputeMesh(Eigen::MatrixXi polyF) {
-    for (int i = 0; i < polyF.rows(); i++) {
+void precomputeMesh(std::vector<std::vector<int> > polyF) {
+    for (int i = 0; i < polyF.size(); i++) {
         calculateFaceMatrixAndPolygons(polyF, i);
         // calculateFaceCenters(polyF, i);
         // calculateHood(polyF, i);
@@ -209,7 +202,7 @@ int main(int argc, char *argv[]) {
     using namespace std;
 
 
-    Eigen::MatrixXi polyF;
+    std::vector<std::vector<int> > polyF;
 
 
     happly::PLYData plyIn("../test.ply");
@@ -229,15 +222,13 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    polyF.conservativeResize(fInd.size(), Fcols);
+    // polyF = fInd;
     for (int i = 0; i < fInd.size(); i++) {
-        for (int j = 0; j < Fcols; j++) {
-            if (fInd[i].size() > j) {
-                polyF(i, j) = fInd[i][j];
-            } else {
-                polyF(i, j) = -1;
-            }
+        std::vector<int> face;
+        for (int j = 0; j < fInd[i].size(); j++) {
+            face.push_back(fInd[i][j]);
         }
+        polyF.push_back(face);
     }
     precomputeMesh(polyF);
 
@@ -503,13 +494,13 @@ int main(int argc, char *argv[]) {
         double x = viewer.current_mouse_x;
         double y = viewer.core().viewport(3) - viewer.current_mouse_y;
         if (igl::unproject_onto_mesh(Eigen::Vector2f(x, y), viewer.core().view,
-                                     viewer.core().proj, viewer.core().viewport, mesh_data.V, F, fid, bc)) {
-            int v_idx = F(fid, 0);
+                                     viewer.core().proj, viewer.core().viewport, mesh_data.V, mesh_data.T, fid, bc)) {
+            int v_idx = mesh_data.T(fid, 0);
             float max = 0;
             for (int i = 0; i < 3; i++) {
                 if (bc(i) > max) {
                     max = bc(i);
-                    v_idx = F(fid, i);
+                    v_idx = mesh_data.T(fid, i);
                 }
             }
 

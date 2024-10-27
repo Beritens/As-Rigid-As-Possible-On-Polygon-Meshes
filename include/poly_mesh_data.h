@@ -14,7 +14,7 @@
 struct poly_mesh_data {
     Eigen::MatrixXd V;
     Eigen::MatrixXd originalV;
-    Eigen::MatrixXi F;
+    std::vector<std::vector<int> > F;
     Eigen::MatrixXi T;
     int triangleCount;
     Eigen::MatrixXd Polygons;
@@ -56,15 +56,15 @@ inline int faceSize(Eigen::VectorXi face) {
 }
 
 inline void calculatePolygons(poly_mesh_data &data) {
-    for (int i = 0; i < data.F.rows(); i++) {
-        int size = faceSize(data.F.row(i));
+    for (int i = 0; i < data.F.size(); i++) {
+        int size = data.F[i].size();
         data.Polygons.conservativeResize(data.Polygons.rows() + 1, 4);
-        Eigen::Vector3d pointa = data.V.row(data.F(i, 0));
+        Eigen::Vector3d pointa = data.V.row(data.F[i][0]);
         Eigen::Vector3d normal = Eigen::Vector3d::Zero();
         for (int j = 1; j < size; j++) {
             int k = ((j) % (size - 1)) + 1;
-            Eigen::Vector3d pointb = data.V.row(data.F(i, j));
-            Eigen::Vector3d pointc = data.V.row(data.F(i, k));
+            Eigen::Vector3d pointb = data.V.row(data.F[i][j]);
+            Eigen::Vector3d pointc = data.V.row(data.F[i][k]);
             Eigen::Vector3d a = pointb - pointa;
             Eigen::Vector3d b = pointc - pointa;
             normal += a.cross(b).normalized();
@@ -84,7 +84,7 @@ inline void makeDual(poly_mesh_data &data) {
     }
 }
 
-inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, Eigen::MatrixXi &F) {
+inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::vector<std::vector<int> > &F) {
     data.V = V;
     data.originalV = V;
     data.F = F;
@@ -95,14 +95,14 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, Eigen
     data.VertPolygons.clear();
 
     //get neighbours
-    for (int i = 0; i < F.rows(); i++) {
-        const int size = faceSize(F.row(i));
+    for (int i = 0; i < F.size(); i++) {
+        const int size = F[i].size();
         data.triangleCount += size - 2;
         for (int j = 0; j < size; j++) {
             const int k = (j + 1) % size;
-            tempHoods[F(i, j)].insert(F(i, k));
-            tempHoods[F(i, k)].insert(F(i, j));
-            data.VertPolygons[F(i, j)].insert(i);
+            tempHoods[F[i][j]].insert(F[i][k]);
+            tempHoods[F[i][k]].insert(F[i][j]);
+            data.VertPolygons[F[i][j]].insert(i);
         }
     }
     data.T = Eigen::MatrixXi(data.triangleCount, 3);
@@ -177,11 +177,11 @@ inline std::vector<std::vector<int> > calculateTriangle(std::vector<Eigen::Vecto
 
 inline void calculateTriangles(poly_mesh_data &mesh_data) {
     int t = 0;
-    for (int i = 0; i < mesh_data.F.rows(); i++) {
-        int size = faceSize(mesh_data.F.row(i));
+    for (int i = 0; i < mesh_data.F.size(); i++) {
+        int size = mesh_data.F[i].size();
         std::vector<Eigen::Vector3d> verts;
         for (int j = 0; j < size; j++) {
-            int v_idx = mesh_data.F(i, j);
+            int v_idx = mesh_data.F[i][j];
             verts.push_back(mesh_data.V.row(v_idx));
         }
         try {
@@ -191,7 +191,7 @@ inline void calculateTriangles(poly_mesh_data &mesh_data) {
                     if (tri[j] < 0 || tri[j] >= size) {
                         continue;
                     }
-                    mesh_data.T(t, j) = mesh_data.F(i, tri[j]);
+                    mesh_data.T(t, j) = mesh_data.F[i][tri[j]];
                 }
                 t++;
             }
