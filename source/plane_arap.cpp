@@ -87,8 +87,6 @@ bool plane_arap_precomputation(
     }
 
     data.L = L;
-    std::cout << "L" << std::endl;
-    std::cout << L << std::endl;
     data.Polygons = mesh_data.Polygons;
     data.b = b;
     data.V = mesh_data.originalV;

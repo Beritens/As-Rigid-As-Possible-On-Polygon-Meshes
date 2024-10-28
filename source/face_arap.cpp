@@ -108,9 +108,6 @@ bool face_arap_precomputation(
         virtualVerts.row(i) = virtVert;
     }
 
-    std::cout << "B" << std::endl;
-    std::cout << data.B << std::endl;
-
 
     data.V = Eigen::MatrixXd(mesh_data.originalV.rows() + virtualVerts.rows(), 3);
     data.V << mesh_data.originalV, virtualVerts;

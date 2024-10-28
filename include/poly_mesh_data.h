@@ -56,6 +56,7 @@ inline int faceSize(Eigen::VectorXi face) {
 }
 
 inline void calculatePolygons(poly_mesh_data &data) {
+    data.Polygons = Eigen::MatrixXd(0, 4);
     for (int i = 0; i < data.F.size(); i++) {
         int size = data.F[i].size();
         data.Polygons.conservativeResize(data.Polygons.rows() + 1, 4);
@@ -77,10 +78,60 @@ inline void calculatePolygons(poly_mesh_data &data) {
     }
 }
 
+inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::vector<std::vector<int> > &F);
+
 inline void makeDual(poly_mesh_data &data) {
+    Eigen::MatrixXd newV = data.originalV;
+    std::vector<std::vector<int> > newF = data.F;
+    bool mustRecompute = false;
     for (int i = 0; i < data.originalV.rows(); i++) {
-        for (int j = 0; j < data.Hoods[i].size(); j++) {
+        if (data.Hoods[i].size() <= 3) {
+            continue;
         }
+        mustRecompute = true;
+        std::map<int, int> verts;
+        verts[data.Hoods[i][0]] = i;
+        std::vector<int> newFace;
+        newFace.push_back(i);
+        for (int j = 1; j < data.Hoods[i].size(); j++) {
+            newV.conservativeResize(newV.rows() + 1, 3);
+            newV.row(newV.rows() - 1) = 0.95 * newV.row(i) + 0.05 * newV.row(data.Hoods[i][j]);
+            verts[data.Hoods[i][j]] = newV.rows() - 1;
+            newFace.push_back(newV.rows() - 1);
+        }
+        newV.row(i) = 0.95 * newV.row(i) + 0.05 * newV.row(data.Hoods[i][0]);
+        newF.push_back(newFace);
+        for (auto f_idx: data.VertPolygons[i]) {
+            int size = newF[f_idx].size();
+            for (int j = 0; j < size; j++) {
+                int next = (j + 1) % size;
+                if (newF[f_idx][next] == i) {
+                    int v1 = newF[f_idx][j];
+                    int v2 = newF[f_idx][(next + 1) % size];
+                    int n1 = verts[newF[f_idx][j]];
+                    int n2 = verts[newF[f_idx][(next + 1) % size]];
+                    newF[f_idx][next] = n1;
+                    newF[f_idx].insert(newF[f_idx].begin() + next + 1, n2);
+
+                    for (int k = 0; k < data.Hoods[v1].size(); k++) {
+                        if (data.Hoods[v1][k] == i) {
+                            data.Hoods[v1][k] = n1;
+                            break;
+                        }
+                    }
+                    for (int k = 0; k < data.Hoods[v2].size(); k++) {
+                        if (data.Hoods[v2][k] == i) {
+                            data.Hoods[v2][k] = n2;
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    if (mustRecompute) {
+        precompute_poly_mesh(data, newV, newF);
     }
 }
 
@@ -105,7 +156,7 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::
             data.VertPolygons[F[i][j]].insert(i);
         }
     }
-    data.T = Eigen::MatrixXi(data.triangleCount, 3);
+    data.T = Eigen::MatrixXi::Zero(data.triangleCount, 3);
 
     for (int i = 0; i < V.size(); i++) {
         int curr = *(tempHoods[i].begin());
@@ -127,9 +178,16 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::
                 for (auto p1: data.VertPolygons[data.Hoods[i][data.Hoods[i].size() - 1]]) {
                     for (auto p2: data.VertPolygons[v]) {
                         if (p1 == p2) {
-                            data.Hoods[i].push_back(v);
-                            fin = true;
-                            break;
+                            for (auto po: data.VertPolygons[i]) {
+                                if (po == p1) {
+                                    data.Hoods[i].push_back(v);
+                                    fin = true;
+                                    break;
+                                }
+                            }
+                            if (fin) {
+                                break;
+                            }
                         }
                     }
                     if (fin) {
@@ -142,6 +200,7 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::
             }
         }
     }
+    makeDual(data);
 }
 
 inline std::vector<std::vector<int> > calculateTriangle(std::vector<Eigen::Vector3d> verts, Eigen::Vector3d normal) {
@@ -167,7 +226,14 @@ inline std::vector<std::vector<int> > calculateTriangle(std::vector<Eigen::Vecto
     std::vector<std::vector<int> > triangles;
     for (int i = 0; i < (n - 2); i++) {
         std::vector<int> t;
+        bool weirdTri = false;
         for (int j = 0; j < 3; j++) {
+            if (indices[i * 3 + j] < 0 || indices[i * 3 + j] > verts.size()) {
+                weirdTri = true;
+            }
+            if (weirdTri) {
+                continue;
+            }
             t.push_back(indices[i * 3 + j]);
         }
         triangles.push_back(t);
@@ -184,20 +250,15 @@ inline void calculateTriangles(poly_mesh_data &mesh_data) {
             int v_idx = mesh_data.F[i][j];
             verts.push_back(mesh_data.V.row(v_idx));
         }
-        try {
-            std::vector<std::vector<int> > triangles = calculateTriangle(verts, mesh_data.Polygons.row(i).head(3));
-            for (auto tri: triangles) {
-                for (int j = 0; j < 3; j++) {
-                    if (tri[j] < 0 || tri[j] >= size) {
-                        continue;
-                    }
-                    mesh_data.T(t, j) = mesh_data.F[i][tri[j]];
+        std::vector<std::vector<int> > triangles = calculateTriangle(verts, mesh_data.Polygons.row(i).head(3));
+        for (auto tri: triangles) {
+            for (int j = 0; j < tri.size(); j++) {
+                if (tri[j] < 0 || tri[j] >= size) {
+                    continue;
                 }
-                t++;
+                mesh_data.T(t, j) = mesh_data.F[i][tri[j]];
             }
-        } catch (...) {
-            std::cout << "negative area" << std::endl;
-            t += size - 2;
+            t++;
         }
     }
 }

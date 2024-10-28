@@ -205,7 +205,7 @@ int main(int argc, char *argv[]) {
     std::vector<std::vector<int> > polyF;
 
 
-    happly::PLYData plyIn("../test.ply");
+    happly::PLYData plyIn("../bunny.ply");
     std::vector<std::array<double, 3> > vPos = plyIn.getVertexPositions();
     std::vector<std::vector<size_t> > fInd = plyIn.getFaceIndices<size_t>();
     V.conservativeResize(vPos.size(), 3);
@@ -238,6 +238,16 @@ int main(int argc, char *argv[]) {
 
 
     precompute_poly_mesh(mesh_data, V, polyF);
+    std::cout << "V" << std::endl;
+    std::cout << mesh_data.originalV << std::endl;
+
+    std::cout << "F" << std::endl;
+    for (int i = 0; i < mesh_data.F.size(); i++) {
+        for (int j = 0; j < mesh_data.F[i].size(); j++) {
+            std::cout << mesh_data.F[i][j] << " ";
+        }
+        std::cout << std::endl;
+    }
     igl::opengl::glfw::Viewer viewer;
     draw_face_mesh(viewer, Polygons);
 
@@ -297,10 +307,10 @@ int main(int argc, char *argv[]) {
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
                 // return Polygons.row(v_idx).head(3);
-                return Polygons.row(v_idx);
+                return mesh_data.Polygons.row(v_idx);
             });
             Eigen::VectorXd x_block = funcBlock.x_from_data([&](int v_idx) {
-                return Polygons.row(v_idx).head(3);
+                return mesh_data.Polygons.row(v_idx).head(3);
             });
             // Projected Newton
 
