@@ -324,7 +324,7 @@ TinyAD::ScalarFunction<4, double, long> getFunction(
                                   }
                                   for (auto v: mesh_data.Hoods[v_idx]) {
                                       for (auto p: mesh_data.VertPolygons[v]) {
-                                          int size = mesh_data.F[i].size();
+                                          int size = mesh_data.F[p].size();
                                           for (int fi = 0; fi < size; fi++) {
                                               if (mesh_data.F[p][fi] == data.b(i)) {
                                                   localConstrainsIndex.push_back(i);
