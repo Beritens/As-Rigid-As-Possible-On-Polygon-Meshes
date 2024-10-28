@@ -205,7 +205,7 @@ int main(int argc, char *argv[]) {
     std::vector<std::vector<int> > polyF;
 
 
-    happly::PLYData plyIn("../bunny.ply");
+    happly::PLYData plyIn("../test.ply");
     std::vector<std::array<double, 3> > vPos = plyIn.getVertexPositions();
     std::vector<std::vector<size_t> > fInd = plyIn.getFaceIndices<size_t>();
     V.conservativeResize(vPos.size(), 3);
@@ -417,7 +417,7 @@ int main(int argc, char *argv[]) {
                 //                           ? funcBlock.eval_with_hessian_proj(x_block)
                 //                           : func.eval_with_hessian_proj(x);
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
-                Eigen::VectorXd d = -g * 0.004;
+                Eigen::VectorXd d = -g * 0.04;
                 // Eigen::VectorXd d = cg_solver.compute(
                 //     H_proj + 1e-9 * TinyAD::identity<double>(useBlockFunc ? x_block.size() : x.size())).solve(-g);
                 // std::cout << H_proj << std::endl;

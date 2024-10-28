@@ -86,11 +86,38 @@ bool plane_arap_precomputation(
         }
     }
 
+
     data.L = L;
     data.Polygons = mesh_data.Polygons;
     data.b = b;
     data.V = mesh_data.originalV;
     data.R = Eigen::MatrixXd(3, mesh_data.V.rows() * 3);
+
+    data.conP.clear();
+    for (int i = 0; i < data.b.size(); i++) {
+        for (auto k: mesh_data.VertPolygons[data.b(i)]) {
+            data.conP.push_back(k);
+        }
+    }
+    data.distPos.clear();
+    int index = 0;
+    for (int i = 0; i < mesh_data.F.size(); i++) {
+        bool skip = false;
+        for (int j = 0; j < data.conP.size(); j++) {
+            if (i == data.conP[j]) {
+                data.distPos.push_back(-i - 1);
+
+                skip = true;
+            }
+        }
+        if (skip) {
+            continue;
+        }
+        data.distPos.push_back(index);
+        index++;
+    }
+
+
     return true;
 }
 
@@ -199,7 +226,6 @@ bool global_distance_step(
 
     Eigen::MatrixXd M = NInvT * data.L * NInv;
 
-    std::vector<int> gons;
     std::vector<double> dists;
 
     for (int i = 0; i < data.b.size(); i++) {
@@ -221,7 +247,6 @@ bool global_distance_step(
         Eigen::Vector3d dist = m * bc.row(i).transpose();
         j = 0;
         for (auto k: mesh_data.VertPolygons[data.b(i)]) {
-            gons.push_back(k);
             dists.push_back(dist(j));
             mesh_data.Polygons(k, 3) = dist(j);
             j++;
@@ -248,32 +273,31 @@ bool global_distance_step(
         }
     }
 
-    Eigen::VectorXd newB = NInvT * b;
-
-    for (int j = 0; j < gons.size(); j++) {
-        int deletedPoly = gons[j];
-        newB(deletedPoly) = dists[j];
+    b = NInvT * b;
+    Eigen::VectorXd newB(b.size() - data.conP.size());
+    for (int i = 0; i < b.size(); i++) {
+        if (data.distPos[i] < 0) {
+            continue;
+        }
+        newB(data.distPos[i]) = b(i);
+        for (int j = 0; j < data.conP.size(); j++) {
+            int deletedIndex = data.conP[j];
+            newB(data.distPos[i]) -= M(i, deletedIndex) * dists[j];
+        }
     }
 
-    Eigen::MatrixXd newM(M.rows(), M.cols());
+    // for (int j = 0; j < data.conP.size(); j++) {
+    //     int deletedPoly = data.conP[j];
+    //     newB(deletedPoly) = dists[j];
+    // }
+
+    Eigen::MatrixXd newM(M.rows() - data.conP.size(), M.cols() - data.conP.size());
     for (int i = 0; i < M.rows(); i++) {
-        bool deltedRow = false;
-        for (int poly = 0; poly < gons.size(); poly++) {
-            if (gons[poly] == i) {
-                deltedRow = true;
-            }
-        }
-        if (deltedRow) {
-            newM(i, i) = 1;
-        }
         for (int j = 0; j < M.cols(); j++) {
-            if (deltedRow) {
-                if (j != i) {
-                    newM(i, j) = 0;
-                }
-            } else {
-                newM(i, j) = M(i, j);
+            if (data.distPos[i] < 0 || data.distPos[j] < 0) {
+                continue;;
             }
+            newM(data.distPos[i], data.distPos[j]) = M(i, j);
         }
     }
 
@@ -282,19 +306,21 @@ bool global_distance_step(
         return true;
     }
 
-    Eigen::VectorXd bestDistances = newM.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(newB);
+
+    Eigen::VectorXd bestDistances = newM.llt().solve(newB);
+
     for (int i = 0; i < mesh_data.Polygons.rows(); i++) {
-        bool skipped = false;
-        for (int poly = 0; poly < gons.size(); poly++) {
-            if (gons[poly] == i) {
-                skipped = true;
-            }
-        }
+        bool skipped = data.distPos[i] < 0;
+        // for (int poly = 0; poly < data.conP.size(); poly++) {
+        //     if (data.conP[poly] == i) {
+        //         skipped = true;
+        //     }
+        // }
         if (skipped) {
             continue;
         }
 
-        mesh_data.Polygons(i, 3) = bestDistances(i);
+        mesh_data.Polygons(i, 3) = bestDistances(data.distPos[i]);
     }
 
     return true;
