@@ -71,7 +71,10 @@ inline void calculatePolygons(poly_mesh_data &data) {
             normal += a.cross(b).normalized();
         }
         normal = normal.normalized();
-        double dist = pointa.dot(normal);
+        double dist = 0;
+        for (int j = 0; j < size; j++) {
+            dist += data.V.row(data.F[i][j]).dot(normal) / (double) size;
+        }
         Eigen::Vector4d polygon;
         polygon << normal, dist;
         data.Polygons.row(data.Polygons.rows() - 1) = polygon;
@@ -79,6 +82,8 @@ inline void calculatePolygons(poly_mesh_data &data) {
 }
 
 inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::vector<std::vector<int> > &F);
+
+inline void calcNewV(poly_mesh_data &data);
 
 inline void makeDual(poly_mesh_data &data) {
     Eigen::MatrixXd newV = data.originalV;
@@ -95,7 +100,7 @@ inline void makeDual(poly_mesh_data &data) {
         newFace.push_back(i);
         for (int j = 1; j < data.Hoods[i].size(); j++) {
             newV.conservativeResize(newV.rows() + 1, 3);
-            newV.row(newV.rows() - 1) = 0.999 * newV.row(i) + 0.001 * newV.row(data.Hoods[i][j]);
+            newV.row(newV.rows() - 1) = 0.95 * newV.row(i) + 0.05 * newV.row(data.Hoods[i][j]);
             verts[data.Hoods[i][j]] = newV.rows() - 1;
             newFace.push_back(newV.rows() - 1);
         }
@@ -132,6 +137,8 @@ inline void makeDual(poly_mesh_data &data) {
     }
     if (mustRecompute) {
         precompute_poly_mesh(data, newV, newF);
+        calcNewV(data);
+        data.originalV = data.V;
     }
 }
 
@@ -236,6 +243,9 @@ inline std::vector<std::vector<int> > calculateTriangle(std::vector<Eigen::Vecto
             }
             t.push_back(indices[i * 3 + j]);
         }
+        if (weirdTri) {
+            t = {0, 0, 0};
+        }
         triangles.push_back(t);
     }
     return triangles;
@@ -263,4 +273,13 @@ inline void calculateTriangles(poly_mesh_data &mesh_data) {
     }
 }
 
+inline void calcNewV(poly_mesh_data &data) {
+    for (int i = 0; i < data.V.rows(); i++) {
+        std::vector<Eigen::Vector4d> pols;
+        for (auto pol: data.VertPolygons[i]) {
+            pols.push_back(data.Polygons.row(pol));
+        }
+        data.V.row(i) = getPoint<double>(pols[0], pols[1], pols[2]);
+    }
+}
 #endif //POLY_MESH_DATA_H

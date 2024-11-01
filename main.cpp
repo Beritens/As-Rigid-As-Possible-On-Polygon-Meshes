@@ -71,16 +71,6 @@ face_arap_data face_arap_data;
 //
 
 
-void calcNewV(const Eigen::MatrixXd &poly) {
-    for (int i = 0; i < mesh_data.V.rows(); i++) {
-        std::vector<Eigen::Vector4d> pols;
-        for (auto pol: mesh_data.VertPolygons[i]) {
-            pols.push_back(poly.row(pol));
-        }
-        mesh_data.V.row(i) = getPoint<double>(pols[0], pols[1], pols[2]);
-    }
-}
-
 void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &poly) {
     calculateTriangles(mesh_data);
     viewer.data().set_mesh(mesh_data.V, mesh_data.T);
@@ -232,22 +222,18 @@ int main(int argc, char *argv[]) {
     }
     precomputeMesh(polyF);
 
-    originalPolygons = Polygons;
-    std::cout << Polygons << std::endl;
-    //std::cout << Normals << std::endl;
-
 
     precompute_poly_mesh(mesh_data, V, polyF);
     std::cout << "V" << std::endl;
-    std::cout << mesh_data.originalV << std::endl;
+    std::cout << mesh_data.originalV.rows() << std::endl;
 
-    std::cout << "F" << std::endl;
-    for (int i = 0; i < mesh_data.F.size(); i++) {
-        for (int j = 0; j < mesh_data.F[i].size(); j++) {
-            std::cout << mesh_data.F[i][j] << " ";
-        }
-        std::cout << std::endl;
-    }
+    // std::cout << "F" << std::endl;
+    // for (int i = 0; i < mesh_data.F.size(); i++) {
+    //     for (int j = 0; j < mesh_data.F[i].size(); j++) {
+    //         std::cout << mesh_data.F[i][j] << " ";
+    //     }
+    //     std::cout << std::endl;
+    // }
     igl::opengl::glfw::Viewer viewer;
     draw_face_mesh(viewer, Polygons);
 
@@ -302,8 +288,8 @@ int main(int argc, char *argv[]) {
 
 
             //FACE
-            auto func = getFaceFunction(constraints, mesh_data, face_arap_data);
-            // auto func = getFunction(constraints, mesh_data, plane_arap_data);
+            // auto func = getFaceFunction(constraints, mesh_data, face_arap_data);
+            auto func = getFunction(constraints, mesh_data, plane_arap_data);
             auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
@@ -335,9 +321,9 @@ int main(int argc, char *argv[]) {
                             for (int j = 0; j < conP.size(); j++) {
                                 b(j) = conP(j);
                             }
-                            //FACE
-                            face_arap_precomputation(mesh_data, face_arap_data, b);
-                            // plane_arap_precomputation(mesh_data, plane_arap_data, b);
+                            // FACE
+                            // face_arap_precomputation(mesh_data, face_arap_data, b);
+                            plane_arap_precomputation(mesh_data, plane_arap_data, b);
                         }
                         constraints.conservativeResize(conP.size(), 3);
                         for (int j = 0; j < conP.size(); j++) {
@@ -357,12 +343,12 @@ int main(int argc, char *argv[]) {
                                     }
                                 }
                             }
-                            calcNewV(mesh_data.Polygons);
+                            calcNewV(mesh_data);
                             //FACE
-                            getFaceRotations(mesh_data, face_arap_data);
-                            global_face_distance_step(bc, mesh_data, face_arap_data);
-                            // getRotations(mesh_data, plane_arap_data);
-                            // global_distance_step(bc, mesh_data, plane_arap_data);
+                            // getFaceRotations(mesh_data, face_arap_data);
+                            // global_face_distance_step(bc, mesh_data, face_arap_data);
+                            getRotations(mesh_data, plane_arap_data);
+                            global_distance_step(bc, mesh_data, plane_arap_data);
                         }
                     }
                 }
@@ -372,7 +358,7 @@ int main(int argc, char *argv[]) {
                 }
 
 
-                calcNewV(mesh_data.Polygons); {
+                calcNewV(mesh_data); {
                     std::lock_guard<std::mutex> lock(m);
                     redraw = true;
                 }
@@ -390,14 +376,14 @@ int main(int argc, char *argv[]) {
                         }
                     }
                     //FACE
-                    getFaceRotations(mesh_data, face_arap_data);
-                    global_face_distance_step(bc, mesh_data, face_arap_data);
-                    // getRotations(mesh_data, plane_arap_data);
-                    // global_distance_step(bc, mesh_data, plane_arap_data);
+                    // getFaceRotations(mesh_data, face_arap_data);
+                    // global_face_distance_step(bc, mesh_data, face_arap_data);
+                    getRotations(mesh_data, plane_arap_data);
+                    global_distance_step(bc, mesh_data, plane_arap_data);
                 }
 
 
-                calcNewV(mesh_data.Polygons);
+                calcNewV(mesh_data);
                 Polygons = mesh_data.Polygons; {
                     std::lock_guard<std::mutex> lock(m);
                     redraw = true;
@@ -412,16 +398,16 @@ int main(int argc, char *argv[]) {
                     return mesh_data.Polygons.row(v_idx).head(3).normalized();
                 });
 
-                auto [f, g] = useBlockFunc
-                                  ? funcBlock.eval_with_gradient(x_block)
-                                  : func.eval_with_gradient(x);
-                // auto [f, g, H_proj] = useBlockFunc
-                //                           ? funcBlock.eval_with_hessian_proj(x_block)
-                //                           : func.eval_with_hessian_proj(x);
+                // auto [f, g] = useBlockFunc
+                //                   ? funcBlock.eval_with_gradient(x_block)
+                //                   : func.eval_with_gradient(x);
+                auto [f, g, H_proj] = useBlockFunc
+                                          ? funcBlock.eval_with_hessian_proj(x_block)
+                                          : func.eval_with_hessian_proj(x);
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
-                Eigen::VectorXd d = -g * 0.003;
-                // Eigen::VectorXd d = cg_solver.compute(
-                //     H_proj + 1e-9 * TinyAD::identity<double>(useBlockFunc ? x_block.size() : x.size())).solve(-g);
+                // Eigen::VectorXd d = -g * 0.03;
+                Eigen::VectorXd d = cg_solver.compute(
+                    H_proj + 1e-9 * TinyAD::identity<double>(useBlockFunc ? x_block.size() : x.size())).solve(-g);
                 // std::cout << H_proj << std::endl;
                 // Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver, 1.0);
                 // if (TinyAD::newton_decrement(d, g) < convergence_eps) {
@@ -430,7 +416,7 @@ int main(int argc, char *argv[]) {
                 if (useBlockFunc) {
                     x_block = TinyAD::line_search(x_block, d, f, g, funcBlock);
                 } else {
-                    x = TinyAD::line_search(x, d, f, g, func);
+                    x = TinyAD::line_search(x, d, f, g, func, 1.0, 0.5, 200);
                 }
 
 
@@ -482,6 +468,7 @@ int main(int argc, char *argv[]) {
     // Plot the mesh with pseudocolors
     //draw_face_mesh(viewer, V);
     //viewer.data().set_mesh(U, F);
+    viewer.core().is_animating = true;
     viewer.core().animation_max_fps = 60.;
     cout <<
             "Press [space] to toggle animation" << endl;
