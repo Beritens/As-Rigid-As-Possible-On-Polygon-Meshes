@@ -95,7 +95,7 @@ inline void makeDual(poly_mesh_data &data) {
         newFace.push_back(i);
         for (int j = 1; j < data.Hoods[i].size(); j++) {
             newV.conservativeResize(newV.rows() + 1, 3);
-            newV.row(newV.rows() - 1) = 0.95 * newV.row(i) + 0.05 * newV.row(data.Hoods[i][j]);
+            newV.row(newV.rows() - 1) = 0.999 * newV.row(i) + 0.001 * newV.row(data.Hoods[i][j]);
             verts[data.Hoods[i][j]] = newV.rows() - 1;
             newFace.push_back(newV.rows() - 1);
         }

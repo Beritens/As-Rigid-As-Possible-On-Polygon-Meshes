@@ -87,7 +87,7 @@ bool plane_arap_precomputation(
     }
 
 
-    data.L = L;
+    data.L = L.sparseView(1e-9);
     data.Polygons = mesh_data.Polygons;
     data.b = b;
     data.V = mesh_data.originalV;
@@ -181,50 +181,41 @@ bool global_distance_step(
     std::vector<Eigen::MatrixXd> invNs;
     std::vector<std::vector<int> > nIdx;
 
-    Eigen::VectorXd nV(data.V.rows() * 3);
 
     for (int i = 0; i < data.V.rows(); i++) {
         std::set<int> polygons = mesh_data.VertPolygons[i];
         MatrixXd N(polygons.size(), 3);
-        Eigen::VectorXd ds(polygons.size());
         std::vector<int> idx;
         int j = 0;
         for (auto pol: polygons) {
             N.row(j) = mesh_data.Polygons.row(pol).head(3);
             idx.push_back(pol);
 
-            ds(j) = mesh_data.Polygons(pol, 3);
             j++;
         }
         Eigen::MatrixXd NInv = N.completeOrthogonalDecomposition().pseudoInverse();
-        nV.segment(i * 3, 3) = NInv * ds;
 
         invNs.push_back(NInv);
         nIdx.push_back(idx);
     }
 
-    Eigen::MatrixXd NInv = Eigen::MatrixXd::Zero(data.V.rows() * 3, mesh_data.Polygons.rows());
+    int rows = data.V.rows() * 3;
+    int cols = mesh_data.Polygons.rows();
+    Eigen::SparseMatrix<double> NInv(rows, cols);
+    std::vector<Eigen::Triplet<double> > triplets;
+
     for (int i = 0; i < nIdx.size(); i++) {
         for (int j = 0; j < 3; j++) {
             for (int k = 0; k < nIdx[i].size(); k++) {
-                NInv(i * 3 + j, nIdx[i][k]) += invNs[i](j, k);
+                triplets.emplace_back(i * 3 + j, nIdx[i][k], invNs[i](j, k));
+                // NInv(i * 3 + j, nIdx[i][k]) += invNs[i](j, k);
             }
         }
     }
-    Eigen::MatrixXd NInvT = NInv.transpose();
+    NInv.setFromTriplets(triplets.begin(), triplets.end());
+    Eigen::SparseMatrix<double> NInvT = NInv.transpose();
 
-
-    // Eigen::VectorXd nV = NInv * d;
-    //test
-
-
-    Eigen::VectorXd d(mesh_data.Polygons.rows());
-    for (int i = 0; i < d.size(); i++) {
-        d(i) = mesh_data.Polygons(i, 3);
-    }
-
-
-    Eigen::MatrixXd M = NInvT * data.L * NInv;
+    Eigen::SparseMatrix<double> M = NInvT * data.L * NInv;
 
     std::vector<double> dists;
 
@@ -282,7 +273,7 @@ bool global_distance_step(
         newB(data.distPos[i]) = b(i);
         for (int j = 0; j < data.conP.size(); j++) {
             int deletedIndex = data.conP[j];
-            newB(data.distPos[i]) -= M(i, deletedIndex) * dists[j];
+            newB(data.distPos[i]) -= M.coeff(i, deletedIndex) * dists[j];
         }
     }
 
@@ -291,15 +282,21 @@ bool global_distance_step(
     //     newB(deletedPoly) = dists[j];
     // }
 
-    Eigen::MatrixXd newM(M.rows() - data.conP.size(), M.cols() - data.conP.size());
-    for (int i = 0; i < M.rows(); i++) {
-        for (int j = 0; j < M.cols(); j++) {
-            if (data.distPos[i] < 0 || data.distPos[j] < 0) {
-                continue;;
+    int newRows = M.rows() - data.conP.size();
+    int newCols = M.cols() - data.conP.size();
+    Eigen::SparseMatrix<double> newM(newRows, newCols);
+    std::vector<Eigen::Triplet<double> > mTriplets;
+    for (int i = 0; i < M.outerSize(); ++i) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(M, i); it; ++it) {
+            int row = it.row();
+            int col = it.col();
+            double value = it.value();
+            if (data.distPos[row] >= 0 && data.distPos[col] >= 0) {
+                mTriplets.emplace_back(data.distPos[row], data.distPos[col], value);
             }
-            newM(data.distPos[i], data.distPos[j]) = M(i, j);
         }
     }
+    newM.setFromTriplets(mTriplets.begin(), mTriplets.end());
 
     //constraints cover whole mesh
     if (newM.size() == 0) {
@@ -307,7 +304,10 @@ bool global_distance_step(
     }
 
 
-    Eigen::VectorXd bestDistances = newM.llt().solve(newB);
+    // Eigen::VectorXd bestDistances = newM.llt().solve(newB);
+    Eigen::SimplicialLLT<Eigen::SparseMatrix<double> > solver;
+    solver.compute(newM);
+    Eigen::VectorXd bestDistances = solver.solve(newB);
 
     for (int i = 0; i < mesh_data.Polygons.rows(); i++) {
         bool skipped = data.distPos[i] < 0;
@@ -502,7 +502,7 @@ TinyAD::ScalarFunction<3, double, long> getBlockFunction(
                                   }
                                   for (auto v: mesh_data.Hoods[v_idx]) {
                                       for (auto p: mesh_data.VertPolygons[v]) {
-                                          int size = mesh_data.F[i].size();
+                                          int size = mesh_data.F[p].size();
                                           for (int fi = 0; fi < size; fi++) {
                                               if (mesh_data.F[p][fi] == data.b(i)) {
                                                   localConstrainsIndex.push_back(i);

@@ -13,7 +13,7 @@ struct edge {
 };
 
 struct plane_arap_data {
-    Eigen::MatrixXd L;
+    Eigen::SparseMatrix<double> L;
     Eigen::MatrixXd Polygons;
     Eigen::MatrixXd V;
     Eigen::VectorXi b;

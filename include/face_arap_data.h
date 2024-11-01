@@ -6,16 +6,18 @@
 #define FACE_ARAP_DATA_H
 
 struct face_arap_data {
-    Eigen::MatrixXd L;
+    Eigen::SparseMatrix<double> L;
     Eigen::MatrixXd Polygons;
     Eigen::MatrixXd V;
     Eigen::VectorXi b;
     Eigen::MatrixXd simpleB;
-    Eigen::MatrixXd B;
-    Eigen::MatrixXd Bt;
+    Eigen::SparseMatrix<double> B;
+    Eigen::SparseMatrix<double> Bt;
     Eigen::MatrixXd R;
     std::vector<std::vector<std::vector<int> > > triangles;
     std::vector<std::vector<std::vector<double> > > cotanWeights;
+    std::vector<int> conP;
+    std::vector<int> distPos;
 };
 
 #endif //PLANE_ARAP_DATA_H

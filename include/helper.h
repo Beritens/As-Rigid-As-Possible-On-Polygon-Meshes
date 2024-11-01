@@ -23,6 +23,23 @@ Eigen::Matrix3<T> getRotation(Eigen::MatrixX<T> v1, Eigen::MatrixX<T> v2) {
     return Rot;
 }
 
+
+// template<class T>
+// Eigen::Matrix3<T> getRotation(const Eigen::MatrixX<T> &v1, const Eigen::MatrixX<T> &v2) {
+//     Eigen::Matrix3<T> S = v2.transpose() * v1;
+//     Eigen::Matrix3<T> Rot = S;
+//
+//     for (int i = 0; i < 10; ++i) {
+//         Rot = 0.5 * (Rot + Rot.inverse().transpose());
+//     }
+//
+//     if (Rot.determinant() < 0) {
+//         Rot.col(2) *= -1;
+//     }
+//
+//     return Rot;
+// }
+
 inline double getAngle(Eigen::Vector3d a, Eigen::Vector3d b) {
     return acos(a.dot(b) / (a.norm() * b.norm()));
 }

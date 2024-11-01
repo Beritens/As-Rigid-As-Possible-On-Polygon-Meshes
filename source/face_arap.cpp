@@ -46,9 +46,9 @@ bool face_arap_precomputation(
     data.triangles.clear();
     data.cotanWeights.resize(mesh_data.F.size());
     data.triangles.resize(mesh_data.F.size());
+    Eigen::MatrixXd B = Eigen::MatrixXd::Identity(3 * (mesh_data.originalV.rows() + mesh_data.F.size()),
+                                                  3 * mesh_data.originalV.rows());
 
-    data.B = Eigen::MatrixXd::Identity(3 * (mesh_data.originalV.rows() + mesh_data.F.size()),
-                                       3 * mesh_data.originalV.rows());
     data.simpleB = Eigen::MatrixXd::Identity((mesh_data.originalV.rows() + mesh_data.F.size()),
                                              mesh_data.originalV.rows());
 
@@ -66,7 +66,7 @@ bool face_arap_precomputation(
             double sumB = 0;
             for (int k = 0; k < size; k++) {
                 double sumA = 0;
-                for (int l = 1; l < size; l++) {
+                for (int l = 0; l < size; l++) {
                     Eigen::Vector3d xk = mesh_data.originalV.row(mesh_data.F[i][k]);
                     Eigen::Vector3d xj = mesh_data.originalV.row(mesh_data.F[i][j]);
                     Eigen::Vector3d xjplus = mesh_data.originalV.row(mesh_data.F[i][(j + 1) % size]);
@@ -76,7 +76,7 @@ bool face_arap_precomputation(
                 }
                 A(j, k) = 2 * sumA;
             }
-            for (int l = 1; l < size; l++) {
+            for (int l = 0; l < size; l++) {
                 Eigen::Vector3d xj = mesh_data.originalV.row(mesh_data.F[i][j]);
                 Eigen::Vector3d xjplus = mesh_data.originalV.row(mesh_data.F[i][(j + 1) % size]);
                 Eigen::Vector3d xl = mesh_data.originalV.row(mesh_data.F[i][l]);
@@ -91,18 +91,20 @@ bool face_arap_precomputation(
             // data.B(3 * (mesh_data.originalV.rows() + i), 3 * (mesh_data.F(i, j))) = 1.0 / (double) size;
             // data.B(3 * (mesh_data.originalV.rows() + i) + 1, 3 * (mesh_data.F(i, j)) + 1) = 1.0 / (double) size;
             // data.B(3 * (mesh_data.originalV.rows() + i) + 2, 3 * (mesh_data.F(i, j)) + 2) = 1.0 / (double) size;
-            A(size, j) = -1;
+            A(size, j) = 1;
         }
-        vb(size) = 1;
+        vb(size) = -1;
 
         Eigen::VectorXd w = A.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(-vb);
+        std::cout << w << std::endl;
+        // Eigen::VectorXd w = Eigen::VectorXd(size) / (double) size;
 
         for (int j = 0; j < size; j++) {
             virtVert += mesh_data.originalV.row(mesh_data.F[i][j]) * w(j);
             data.simpleB((mesh_data.originalV.rows() + i), (mesh_data.F[i][j])) = w(j);
-            data.B(3 * (mesh_data.originalV.rows() + i), 3 * (mesh_data.F[i][j])) = w(j);
-            data.B(3 * (mesh_data.originalV.rows() + i) + 1, 3 * (mesh_data.F[i][j]) + 1) = w(j);
-            data.B(3 * (mesh_data.originalV.rows() + i) + 2, 3 * (mesh_data.F[i][j]) + 2) = w(j);
+            B(3 * (mesh_data.originalV.rows() + i), 3 * (mesh_data.F[i][j])) = w(j);
+            B(3 * (mesh_data.originalV.rows() + i) + 1, 3 * (mesh_data.F[i][j]) + 1) = w(j);
+            B(3 * (mesh_data.originalV.rows() + i) + 2, 3 * (mesh_data.F[i][j]) + 2) = w(j);
         }
 
         virtualVerts.row(i) = virtVert;
@@ -162,9 +164,9 @@ bool face_arap_precomputation(
             // data.cotanWeights[i].push_back(1.0);
             // data.cotanWeights[i].push_back(1.0);
 
-            data.cotanWeights[i][j].push_back(1.0 / tan(angleA));
-            data.cotanWeights[i][j].push_back(1.0 / tan(angleB));
-            data.cotanWeights[i][j].push_back(1.0 / tan(angleC));
+            data.cotanWeights[i][j].push_back(1.0 / max(tan(angleA), 0.001));
+            data.cotanWeights[i][j].push_back(1.0 / max(tan(angleB), 0.001));
+            data.cotanWeights[i][j].push_back(1.0 / max(tan(angleC), 0.001));
         }
     }
 
@@ -184,12 +186,38 @@ bool face_arap_precomputation(
         }
     }
 
-    data.L = L;
+
+    data.L = L.sparseView(1e-9);
+    data.B = B.sparseView(1e-9);
 
     data.Polygons = mesh_data.Polygons;
     data.b = b;
     data.R = Eigen::MatrixXd(3, mesh_data.F.size() * 3);
     data.Bt = data.B.transpose();
+
+    data.conP.clear();
+    for (int i = 0; i < data.b.size(); i++) {
+        for (auto k: mesh_data.VertPolygons[data.b(i)]) {
+            data.conP.push_back(k);
+        }
+    }
+    data.distPos.clear();
+    int index = 0;
+    for (int i = 0; i < mesh_data.F.size(); i++) {
+        bool skip = false;
+        for (int j = 0; j < data.conP.size(); j++) {
+            if (i == data.conP[j]) {
+                data.distPos.push_back(-i - 1);
+
+                skip = true;
+            }
+        }
+        if (skip) {
+            continue;
+        }
+        data.distPos.push_back(index);
+        index++;
+    }
     return true;
 }
 
@@ -247,37 +275,38 @@ bool global_face_distance_step(
     std::vector<Eigen::MatrixXd> invNs;
     std::vector<std::vector<int> > nIdx;
 
-    Eigen::VectorXd nV(data.V.rows() * 3);
 
     for (int i = 0; i < mesh_data.originalV.rows(); i++) {
         std::set<int> polygons = mesh_data.VertPolygons[i];
         MatrixXd N(polygons.size(), 3);
-        Eigen::VectorXd ds(polygons.size());
         std::vector<int> idx;
         int j = 0;
         for (auto pol: polygons) {
             N.row(j) = mesh_data.Polygons.row(pol).head(3);
             idx.push_back(pol);
 
-            ds(j) = mesh_data.Polygons(pol, 3);
             j++;
         }
         Eigen::MatrixXd NInv = N.completeOrthogonalDecomposition().pseudoInverse();
-        nV.segment(i * 3, 3) = NInv * ds;
 
         invNs.push_back(NInv);
         nIdx.push_back(idx);
     }
 
-    Eigen::MatrixXd NInv = Eigen::MatrixXd::Zero(mesh_data.originalV.rows() * 3, mesh_data.Polygons.rows());
+    int rows = mesh_data.originalV.rows() * 3;
+    int cols = mesh_data.Polygons.rows();
+    Eigen::SparseMatrix<double> NInv(rows, cols);
+    std::vector<Eigen::Triplet<double> > triplets;
+
     for (int i = 0; i < nIdx.size(); i++) {
         for (int j = 0; j < 3; j++) {
             for (int k = 0; k < nIdx[i].size(); k++) {
-                NInv(i * 3 + j, nIdx[i][k]) += invNs[i](j, k);
+                triplets.emplace_back(i * 3 + j, nIdx[i][k], invNs[i](j, k));
             }
         }
     }
-    Eigen::MatrixXd NInvT = NInv.transpose();
+    NInv.setFromTriplets(triplets.begin(), triplets.end());
+    Eigen::SparseMatrix<double> NInvT = NInv.transpose();
 
 
     // Eigen::VectorXd nV = NInv * d;
@@ -290,7 +319,7 @@ bool global_face_distance_step(
     }
 
 
-    Eigen::MatrixXd M = NInvT * data.Bt * data.L * data.B * NInv;
+    Eigen::SparseMatrix<double> M = NInvT * data.Bt * data.L * data.B * NInv;
 
     std::vector<int> gons;
     std::vector<double> dists;
@@ -354,37 +383,39 @@ bool global_face_distance_step(
         }
     }
 
-    Eigen::VectorXd newB = NInvT * data.Bt * b;
+    b = NInvT * data.Bt * b;
 
     // std::cout << "should be 0" << std::endl;
     // std::cout << M * d - b << std::endl;
-    for (int j = 0; j < gons.size(); j++) {
-        int deletedPoly = gons[j];
-        newB(deletedPoly) = dists[j];
+
+    Eigen::VectorXd newB(b.size() - data.conP.size());
+    for (int i = 0; i < b.size(); i++) {
+        if (data.distPos[i] < 0) {
+            continue;
+        }
+        newB(data.distPos[i]) = b(i);
+        for (int j = 0; j < data.conP.size(); j++) {
+            int deletedIndex = data.conP[j];
+            newB(data.distPos[i]) -= M.coeff(i, deletedIndex) * dists[j];
+        }
     }
 
 
-    Eigen::MatrixXd newM(M.rows(), M.cols());
-    for (int i = 0; i < M.rows(); i++) {
-        bool deltedRow = false;
-        for (int poly = 0; poly < gons.size(); poly++) {
-            if (gons[poly] == i) {
-                deltedRow = true;
-            }
-        }
-        if (deltedRow) {
-            newM(i, i) = 1;
-        }
-        for (int j = 0; j < M.cols(); j++) {
-            if (deltedRow) {
-                if (j != i) {
-                    newM(i, j) = 0;
-                }
-            } else {
-                newM(i, j) = M(i, j);
+    int newRows = M.rows() - data.conP.size();
+    int newCols = M.cols() - data.conP.size();
+    Eigen::SparseMatrix<double> newM(newRows, newCols);
+    std::vector<Eigen::Triplet<double> > mTriplets;
+    for (int i = 0; i < M.outerSize(); ++i) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(M, i); it; ++it) {
+            int row = it.row();
+            int col = it.col();
+            double value = it.value();
+            if (data.distPos[row] >= 0 && data.distPos[col] >= 0) {
+                mTriplets.emplace_back(data.distPos[row], data.distPos[col], value);
             }
         }
     }
+    newM.setFromTriplets(mTriplets.begin(), mTriplets.end());
 
 
     //constraints cover whole mesh
@@ -392,23 +423,25 @@ bool global_face_distance_step(
         return true;
     }
 
-    Eigen::VectorXd bestDistances = newM.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(newB);
+    Eigen::SimplicialLLT<Eigen::SparseMatrix<double> > solver;
+    solver.compute(newM);
+    Eigen::VectorXd bestDistances = solver.solve(newB);
     // std::cout << "should be zero" << std::endl;
     // std::cout << newM * bestDistances - b << std::endl;
     // std::cout << "R" << std::endl;
     // std::cout << data.R << std::endl;
     for (int i = 0; i < mesh_data.Polygons.rows(); i++) {
-        bool skipped = false;
-        for (int poly = 0; poly < gons.size(); poly++) {
-            if (gons[poly] == i) {
-                skipped = true;
-            }
-        }
+        bool skipped = data.distPos[i] < 0;
+        // for (int poly = 0; poly < data.conP.size(); poly++) {
+        //     if (data.conP[poly] == i) {
+        //         skipped = true;
+        //     }
+        // }
         if (skipped) {
             continue;
         }
 
-        mesh_data.Polygons(i, 3) = bestDistances(i);
+        mesh_data.Polygons(i, 3) = bestDistances(data.distPos[i]);
     }
 
     return true;
@@ -498,8 +531,8 @@ TinyAD::ScalarFunction<4, double, long> getFaceFunction(
                                   Eigen::Vector3<T> neighborVert = getPoint<T>(
                                       neighPolygons[0], neighPolygons[1], neighPolygons[2]);
                                   points[mesh_data.F[f_idx][i]] = neighborVert;
-                                  virtVert += neighborVert * data.B(3 * (f_idx + mesh_data.originalV.rows()),
-                                                                    3 * mesh_data.F[f_idx][i]);
+                                  virtVert += neighborVert * data.B.coeff(3 * (f_idx + mesh_data.originalV.rows()),
+                                                                          3 * mesh_data.F[f_idx][i]);
                               }
                               points[mesh_data.V.rows() + f_idx] = virtVert;
 

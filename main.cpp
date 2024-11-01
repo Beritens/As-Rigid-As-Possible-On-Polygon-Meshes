@@ -301,8 +301,9 @@ int main(int argc, char *argv[]) {
             plane_arap_precomputation(mesh_data, plane_arap_data, b);
 
 
-            // auto func = getFaceFunction(constraints, mesh_data, face_arap_data);
-            auto func = getFunction(constraints, mesh_data, plane_arap_data);
+            //FACE
+            auto func = getFaceFunction(constraints, mesh_data, face_arap_data);
+            // auto func = getFunction(constraints, mesh_data, plane_arap_data);
             auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
@@ -334,11 +335,9 @@ int main(int argc, char *argv[]) {
                             for (int j = 0; j < conP.size(); j++) {
                                 b(j) = conP(j);
                             }
-                            // mesh_data.V = face_arap_data.V;
-
-                            // mesh_data.V = plane_arap_data.V;
-                            // face_arap_precomputation(mesh_data, face_arap_data, b);
-                            plane_arap_precomputation(mesh_data, plane_arap_data, b);
+                            //FACE
+                            face_arap_precomputation(mesh_data, face_arap_data, b);
+                            // plane_arap_precomputation(mesh_data, plane_arap_data, b);
                         }
                         constraints.conservativeResize(conP.size(), 3);
                         for (int j = 0; j < conP.size(); j++) {
@@ -359,14 +358,16 @@ int main(int argc, char *argv[]) {
                                 }
                             }
                             calcNewV(mesh_data.Polygons);
-                            // getFaceRotations(mesh_data, face_arap_data);
-                            // global_face_distance_step(bc, mesh_data, face_arap_data);
-                            getRotations(mesh_data, plane_arap_data);
-                            global_distance_step(bc, mesh_data, plane_arap_data);
+                            //FACE
+                            getFaceRotations(mesh_data, face_arap_data);
+                            global_face_distance_step(bc, mesh_data, face_arap_data);
+                            // getRotations(mesh_data, plane_arap_data);
+                            // global_distance_step(bc, mesh_data, plane_arap_data);
                         }
                     }
                 }
                 if (conP.size() <= 0) {
+                    i = 0;
                     continue;
                 }
 
@@ -388,10 +389,11 @@ int main(int argc, char *argv[]) {
                             }
                         }
                     }
-                    // getFaceRotations(mesh_data, face_arap_data);
-                    // global_face_distance_step(bc, mesh_data, face_arap_data);
-                    getRotations(mesh_data, plane_arap_data);
-                    global_distance_step(bc, mesh_data, plane_arap_data);
+                    //FACE
+                    getFaceRotations(mesh_data, face_arap_data);
+                    global_face_distance_step(bc, mesh_data, face_arap_data);
+                    // getRotations(mesh_data, plane_arap_data);
+                    // global_distance_step(bc, mesh_data, plane_arap_data);
                 }
 
 
@@ -417,11 +419,11 @@ int main(int argc, char *argv[]) {
                 //                           ? funcBlock.eval_with_hessian_proj(x_block)
                 //                           : func.eval_with_hessian_proj(x);
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
-                Eigen::VectorXd d = -g * 0.04;
+                Eigen::VectorXd d = -g * 0.003;
                 // Eigen::VectorXd d = cg_solver.compute(
                 //     H_proj + 1e-9 * TinyAD::identity<double>(useBlockFunc ? x_block.size() : x.size())).solve(-g);
                 // std::cout << H_proj << std::endl;
-                // Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver, 2.0);
+                // Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver, 1.0);
                 // if (TinyAD::newton_decrement(d, g) < convergence_eps) {
                 //     //break;
                 // }
