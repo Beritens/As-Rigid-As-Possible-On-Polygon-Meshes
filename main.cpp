@@ -63,12 +63,9 @@ poly_mesh_data mesh_data;
 plane_arap_data plane_arap_data;
 face_arap_data face_arap_data;
 
-//0.947214,   0.58541,         0,
-//0.8090169943749473, -0.8090169943749473, 0.8090169943749473;
-// double x = 0.8090169943749473;
-// double y = -0.8090169943749473;
-// double z = 0.8090169943749473;
-//
+double point_x = 0;
+double point_y = 0;
+double point_z = 0;
 
 
 void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &poly) {
@@ -521,6 +518,9 @@ int main(int argc, char *argv[]) {
                 for (int i = 0; i < tempConstraints.rows(); i++) {
                     viewer.data().add_points(tempConstraints.row(i), Eigen::RowVector3d(1, 0, 0));
                 }
+                point_x = mesh_data.V(v_idx, 0);
+                point_y = mesh_data.V(v_idx, 1);
+                point_z = mesh_data.V(v_idx, 2);
             } else {
                 for (int i = 0; i < conP.size(); i++) {
                     if (conP(i) == v_idx) {
@@ -592,7 +592,10 @@ int main(int argc, char *argv[]) {
                 tempConstraints.row(i) = constraints.row(i);
             }
             Eigen::Vector3d newCon = tempConstraints.row(conP.size() - 1);
-            newCon(1) = newCon(1) + 1;
+            // newCon(1) = newCon(1) + 1;
+            newCon(0) = point_x;
+            newCon(1) = point_y;
+            newCon(2) = point_z;
             tempConP = conP;
             tempConstraints.row(conP.size() - 1) = newCon;
             viewer.data().clear_points();
@@ -634,6 +637,25 @@ int main(int argc, char *argv[]) {
         return false;
     };
 
+    menu.callback_draw_custom_window = [&]() {
+        // Define next window position + size
+        ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling(), 10), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(200, 160), ImGuiCond_FirstUseEver);
+        ImGui::Begin(
+            "New Window", nullptr,
+            ImGuiWindowFlags_NoSavedSettings
+        );
+
+        // Expose the same variable directly ...
+        ImGui::PushItemWidth(-80);
+        ImGui::DragScalar("x", ImGuiDataType_Double, &point_x, 0.1, 0, 0, "%.4f");
+        ImGui::DragScalar("y", ImGuiDataType_Double, &point_y, 0.1, 0, 0, "%.4f");
+        ImGui::DragScalar("z", ImGuiDataType_Double, &point_z, 0.1, 0, 0, "%.4f");
+        ImGui::PopItemWidth();
+
+
+        ImGui::End();
+    };
 
     viewer.launch();
     if (optimization_thread.joinable()) {
