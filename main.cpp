@@ -183,10 +183,12 @@ int main(int argc, char *argv[]) {
 
     std::atomic<bool> redraw(false);
     std::atomic<bool> measure(false);
+    std::atomic<bool> face(false);
+    std::atomic<bool> conjugate(false);
     std::mutex m;
     bool newCons = false;
     bool changedCons = false;
-    bool onlyGradientDecent = false;
+    std::atomic<bool> onlyGradientDescent(false);
     std::mutex m2;
     std::thread optimization_thread(
         [&]() {
@@ -203,9 +205,8 @@ int main(int argc, char *argv[]) {
             plane_arap_precomputation(mesh_data, plane_arap_data, b);
 
 
-            //FACE
-            auto func = getFaceFunction(constraints, mesh_data, face_arap_data);
-            // auto func = getFunction(constraints, mesh_data, plane_arap_data);
+            auto faceFunc = getFaceFunction(constraints, mesh_data, face_arap_data);
+            auto func = getFunction(constraints, mesh_data, plane_arap_data);
             auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
@@ -245,8 +246,12 @@ int main(int argc, char *argv[]) {
                                 b(j) = conP(j);
                             }
                             // FACE
-                            face_arap_precomputation(mesh_data, face_arap_data, b);
-                            // plane_arap_precomputation(mesh_data, plane_arap_data, b);
+                            if(face.load(std::memory_order_relaxed)) {
+                                face_arap_precomputation(mesh_data, face_arap_data, b);
+                            }
+                            else {
+                                plane_arap_precomputation(mesh_data, plane_arap_data, b);
+                            }
                         }
                         constraints.conservativeResize(conP.size(), 3);
                         for (int j = 0; j < conP.size(); j++) {
@@ -255,7 +260,7 @@ int main(int argc, char *argv[]) {
                         newCons = false;
                         changedCons = false;
 
-                        if (onlyGradientDecent) {
+                        if (onlyGradientDescent.load(std::memory_order_relaxed)) {
                             MatrixXd bc(b.size(), 3);
                             for (int j = 0; j < b.size(); j++) {
                                 bc.row(j) = mesh_data.V.row(b(j));
@@ -268,10 +273,15 @@ int main(int argc, char *argv[]) {
                             }
                             calcNewV(mesh_data);
                             //FACE
-                            getFaceRotations(mesh_data, face_arap_data);
-                            global_face_distance_step(bc, mesh_data, face_arap_data);
-                            // getRotations(mesh_data, plane_arap_data);
-                            // global_distance_step(bc, mesh_data, plane_arap_data);
+                            if(face.load(std::memory_order_relaxed)) {
+                                getFaceRotations(mesh_data, face_arap_data);
+                                global_face_distance_step(bc, mesh_data, face_arap_data);
+                            }
+                            else {
+                                getRotations(mesh_data, plane_arap_data);
+                                global_distance_step(bc, mesh_data, plane_arap_data);
+                            }
+
                         }
                     }
                 }
@@ -285,7 +295,7 @@ int main(int argc, char *argv[]) {
                 redraw.store(true, std::memory_order_relaxed);
                 // std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-                if (!onlyGradientDecent) {
+                if (!onlyGradientDescent.load(std::memory_order_relaxed)) {
                     MatrixXd bc(b.size(), 3);
                     for (int j = 0; j < b.size(); j++) {
                         bc.row(j) = mesh_data.V.row(b(j));
@@ -297,10 +307,14 @@ int main(int argc, char *argv[]) {
                         }
                     }
                     //FACE
-                    getFaceRotations(mesh_data, face_arap_data);
-                    global_face_distance_step(bc, mesh_data, face_arap_data);
-                    // getRotations(mesh_data, plane_arap_data);
-                    // global_distance_step(bc, mesh_data, plane_arap_data);
+                    if(face.load(std::memory_order_relaxed)) {
+                        getFaceRotations(mesh_data, face_arap_data);
+                        global_face_distance_step(bc, mesh_data, face_arap_data);
+                    }
+                    else {
+                        getRotations(mesh_data, plane_arap_data);
+                        global_distance_step(bc, mesh_data, plane_arap_data);
+                    }
                 }
 
 
@@ -317,13 +331,27 @@ int main(int argc, char *argv[]) {
                     return mesh_data.Polygons.row(v_idx).head(3).normalized();
                 });
 
-                // auto [f, g] = useBlockFunc
-                //                   ? funcBlock.eval_with_gradient(x_block)
-                //                   : func.eval_with_gradient(x);
-                auto [f, g, H_proj] = useBlockFunc
-                                          ? funcBlock.eval_with_hessian_proj(x_block)
-                                          : func.eval_with_hessian_proj(x);
+                VectorXd d;
+                VectorXd g;
+                double f;
+                if(conjugate.load(std::memory_order_relaxed)) {
+                    Eigen::MatrixXd H_proj;
+                    std::tie(f, g, H_proj) =face.load(std::memory_order_relaxed)? faceFunc.eval_with_hessian_proj(x) : useBlockFunc
+                                              ? funcBlock.eval_with_hessian_proj(x_block)
+                                              : func.eval_with_hessian_proj(x);
+                    d = cg_solver.compute(
+                    H_proj + 1e-9 * TinyAD::identity<double>(useBlockFunc ? x_block.size() : x.size())).solve(-g);
+
+                }
+                else {
+                    std::tie(f, g) = face.load(std::memory_order_relaxed)? faceFunc.eval_with_gradient(x) : useBlockFunc
+                                  ? funcBlock.eval_with_gradient(x_block)
+                                  : func.eval_with_gradient(x);
+                    d = -g * 0.03;
+                }
+
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
+
 
                 //measurement
                 if(measure.load(std::memory_order_relaxed)) {
@@ -335,9 +363,9 @@ int main(int argc, char *argv[]) {
 
 
 
-                // Eigen::VectorXd d = -g * 0.03;
-                Eigen::VectorXd d = cg_solver.compute(
-                    H_proj + 1e-9 * TinyAD::identity<double>(useBlockFunc ? x_block.size() : x.size())).solve(-g);
+
+
+
                 // std::cout << H_proj << std::endl;
                 // Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver, 1.0);
                 // if (TinyAD::newton_decrement(d, g) < convergence_eps) {
@@ -346,7 +374,7 @@ int main(int argc, char *argv[]) {
                 if (useBlockFunc) {
                     x_block = TinyAD::line_search(x_block, d, f, g, funcBlock);
                 } else {
-                    x = TinyAD::line_search(x, d, f, g, func, 1.0, 0.5, 200);
+                    x = TinyAD::line_search(x, d, f, g, face.load(std::memory_order_relaxed)?faceFunc:func, 1.0, 0.5, 64);
                 }
 
 
@@ -517,7 +545,7 @@ int main(int argc, char *argv[]) {
             selectMode = !selectMode;
         }
         if (key == GLFW_KEY_G) {
-            onlyGradientDecent = !onlyGradientDecent;
+            onlyGradientDescent.store(onlyGradientDescent.load(std::memory_order_relaxed), std::memory_order_relaxed);
         }
         if (key == GLFW_KEY_S) {
             measurementsFile.close();
@@ -582,6 +610,15 @@ int main(int argc, char *argv[]) {
         ImGui::DragScalar("z", ImGuiDataType_Double, &point_z, 0.1, 0, 0, "%.4f");
         ImGui::PopItemWidth();
 
+        bool conjugate_value = conjugate.load(std::memory_order_relaxed);
+        if (ImGui::Checkbox("Conjugate", &conjugate_value)) {
+            conjugate.store(conjugate_value, std::memory_order_relaxed);
+        }
+
+        bool face_value = face.load(std::memory_order_relaxed);
+        if (ImGui::Checkbox("Face", &face_value)) {
+            face.store(face_value, std::memory_order_relaxed);
+        }
 
         ImGui::End();
     };
