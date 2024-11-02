@@ -18,7 +18,9 @@
 #include <Eigen/StdVector>
 #include <vector>
 #include <algorithm>
+#include <corecrt_math_defines.h>
 #include <iostream>
+#include <math.h>
 #include <mutex>
 
 #include <TinyAD/ScalarFunction.hh>
@@ -263,7 +265,7 @@ int main(int argc, char *argv[]) {
         constraints.row(i) = V.row(conP(i));
     }
 
-    bool redraw = false;
+    std::atomic<bool> redraw(false);
     std::mutex m;
     bool newCons = false;
     bool changedCons = false;
@@ -285,8 +287,8 @@ int main(int argc, char *argv[]) {
 
 
             //FACE
-            // auto func = getFaceFunction(constraints, mesh_data, face_arap_data);
-            auto func = getFunction(constraints, mesh_data, plane_arap_data);
+            auto func = getFaceFunction(constraints, mesh_data, face_arap_data);
+            // auto func = getFunction(constraints, mesh_data, plane_arap_data);
             auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
@@ -319,8 +321,8 @@ int main(int argc, char *argv[]) {
                                 b(j) = conP(j);
                             }
                             // FACE
-                            // face_arap_precomputation(mesh_data, face_arap_data, b);
-                            plane_arap_precomputation(mesh_data, plane_arap_data, b);
+                            face_arap_precomputation(mesh_data, face_arap_data, b);
+                            // plane_arap_precomputation(mesh_data, plane_arap_data, b);
                         }
                         constraints.conservativeResize(conP.size(), 3);
                         for (int j = 0; j < conP.size(); j++) {
@@ -342,10 +344,10 @@ int main(int argc, char *argv[]) {
                             }
                             calcNewV(mesh_data);
                             //FACE
-                            // getFaceRotations(mesh_data, face_arap_data);
-                            // global_face_distance_step(bc, mesh_data, face_arap_data);
-                            getRotations(mesh_data, plane_arap_data);
-                            global_distance_step(bc, mesh_data, plane_arap_data);
+                            getFaceRotations(mesh_data, face_arap_data);
+                            global_face_distance_step(bc, mesh_data, face_arap_data);
+                            // getRotations(mesh_data, plane_arap_data);
+                            // global_distance_step(bc, mesh_data, plane_arap_data);
                         }
                     }
                 }
@@ -355,10 +357,8 @@ int main(int argc, char *argv[]) {
                 }
 
 
-                calcNewV(mesh_data); {
-                    std::lock_guard<std::mutex> lock(m);
-                    redraw = true;
-                }
+                calcNewV(mesh_data);
+                redraw.store(true, std::memory_order_relaxed);
                 // std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
                 if (!onlyGradientDecent) {
@@ -373,20 +373,19 @@ int main(int argc, char *argv[]) {
                         }
                     }
                     //FACE
-                    // getFaceRotations(mesh_data, face_arap_data);
-                    // global_face_distance_step(bc, mesh_data, face_arap_data);
-                    getRotations(mesh_data, plane_arap_data);
-                    global_distance_step(bc, mesh_data, plane_arap_data);
+                    getFaceRotations(mesh_data, face_arap_data);
+                    global_face_distance_step(bc, mesh_data, face_arap_data);
+                    // getRotations(mesh_data, plane_arap_data);
+                    // global_distance_step(bc, mesh_data, plane_arap_data);
                 }
 
 
                 calcNewV(mesh_data);
-                Polygons = mesh_data.Polygons; {
-                    std::lock_guard<std::mutex> lock(m);
-                    redraw = true;
-                }
+                Polygons = mesh_data.Polygons;
+                redraw.store(true, std::memory_order_relaxed);
 
                 // getRotations(mesh_data, plane_arap_data);
+                std::cout << mesh_data.Polygons << std::endl;
                 x = func.x_from_data([&](int v_idx) {
                     return mesh_data.Polygons.row(v_idx);
                 });
@@ -614,7 +613,7 @@ int main(int argc, char *argv[]) {
     };
 
     viewer.callback_pre_draw = [&](igl::opengl::glfw::Viewer &viewer) {
-        if (redraw) {
+        if (redraw.load(std::memory_order_relaxed)) {
             draw_face_mesh(viewer, Polygons);
 
             //viewer.data().add_points(point, Eigen::RowVector3d(1, 0, 0));
@@ -623,16 +622,7 @@ int main(int argc, char *argv[]) {
             for (int i = 0; i < constraints.rows(); i++) {
                 viewer.data().add_points(constraints.row(i), Eigen::RowVector3d(1, 0, 0));
             }
-            //viewer.data().set_vertices(P);
-            //viewer.core().align_camera_center(P);
-            //viewer.core().camera_zoom = 2;
-            // {
-            //     std::lock_guard<std::mutex> lock(m);
-            //     constraints(1, 0) = x;
-            //     constraints(1, 1) = y;
-            //     constraints(1, 2) = z;
-            redraw = false;
-            // }
+            redraw.store(false, std::memory_order_relaxed);
         }
         return false;
     };

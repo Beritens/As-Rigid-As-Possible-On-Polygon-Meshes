@@ -165,7 +165,7 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::
     }
     data.T = Eigen::MatrixXi::Zero(data.triangleCount, 3);
 
-    for (int i = 0; i < V.size(); i++) {
+    for (int i = 0; i < V.rows(); i++) {
         int curr = *(tempHoods[i].begin());
         data.Hoods[i].push_back(curr);
 
@@ -217,8 +217,6 @@ inline std::vector<std::vector<int> > calculateTriangle(std::vector<Eigen::Vecto
     Eigen::Matrix<double, 2, 3> M;
     M.row(0) = a;
     M.row(1) = b;
-    double x[verts.size()];
-    double y[verts.size()];
     using Point = std::array<double, 2>;
     std::vector<Point> poly;
     std::vector<std::vector<Point> > polygon;
@@ -235,6 +233,10 @@ inline std::vector<std::vector<int> > calculateTriangle(std::vector<Eigen::Vecto
         std::vector<int> t;
         bool weirdTri = false;
         for (int j = 0; j < 3; j++) {
+            if(i*3 +j >= indices.size()) {
+                weirdTri = true;
+                break;
+            }
             if (indices[i * 3 + j] < 0 || indices[i * 3 + j] > verts.size()) {
                 weirdTri = true;
             }

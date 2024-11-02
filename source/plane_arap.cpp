@@ -326,11 +326,11 @@ bool global_distance_step(
     return true;
 }
 
-TinyAD::ScalarFunction<4, double, long> getFunction(
+TinyAD::ScalarFunction<4, double, long long> getFunction(
     const Eigen::MatrixXd &bc,
     poly_mesh_data &mesh_data,
     plane_arap_data &data) {
-    auto func = TinyAD::scalar_function<4>(TinyAD::range(data.Polygons.rows()));
+    TinyAD::ScalarFunction<4, double, long long> func = TinyAD::scalar_function<4>(TinyAD::range(data.Polygons.rows()));
 
     func.add_elements<10>(TinyAD::range(mesh_data.V.rows()),
                           [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
@@ -478,11 +478,11 @@ TinyAD::ScalarFunction<4, double, long> getFunction(
     return func;
 }
 
-TinyAD::ScalarFunction<3, double, long> getBlockFunction(
+TinyAD::ScalarFunction<3, double, long long> getBlockFunction(
     const Eigen::MatrixXd &bc,
     poly_mesh_data &mesh_data,
     plane_arap_data &data) {
-    auto func = TinyAD::scalar_function<3>(TinyAD::range(data.Polygons.rows()));
+    TinyAD::ScalarFunction<3, double, long long> func = TinyAD::scalar_function<3>(TinyAD::range(data.Polygons.rows()));
 
     func.add_elements<10>(TinyAD::range(mesh_data.V.rows()),
                           [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
@@ -605,11 +605,11 @@ TinyAD::ScalarFunction<3, double, long> getBlockFunction(
 }
 
 
-TinyAD::ScalarFunction<4, double, long> getEdgeFunction(
+TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
     const Eigen::MatrixXd &bc,
     poly_mesh_data &mesh_data,
     plane_arap_data &data) {
-    auto func = TinyAD::scalar_function<4>(TinyAD::range(data.Polygons.rows()));
+    TinyAD::ScalarFunction<4, double, long long> func = TinyAD::scalar_function<4>(TinyAD::range(data.Polygons.rows()));
 
     func.add_elements<9>(TinyAD::range(data.edges.size()),
                          [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {

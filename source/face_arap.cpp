@@ -96,7 +96,6 @@ bool face_arap_precomputation(
         vb(size) = -1;
 
         Eigen::VectorXd w = A.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(-vb);
-        std::cout << w << std::endl;
         // Eigen::VectorXd w = Eigen::VectorXd(size) / (double) size;
 
         for (int j = 0; j < size; j++) {
@@ -382,7 +381,6 @@ bool global_face_distance_step(
             insertInFaceB(b, tri[2], tri[1], data.cotanWeights[i][j][0], data.V, rot);
         }
     }
-
     b = NInvT * data.Bt * b;
 
     // std::cout << "should be 0" << std::endl;
@@ -426,10 +424,7 @@ bool global_face_distance_step(
     Eigen::SimplicialLLT<Eigen::SparseMatrix<double> > solver;
     solver.compute(newM);
     Eigen::VectorXd bestDistances = solver.solve(newB);
-    // std::cout << "should be zero" << std::endl;
-    // std::cout << newM * bestDistances - b << std::endl;
-    // std::cout << "R" << std::endl;
-    // std::cout << data.R << std::endl;
+
     for (int i = 0; i < mesh_data.Polygons.rows(); i++) {
         bool skipped = data.distPos[i] < 0;
         // for (int poly = 0; poly < data.conP.size(); poly++) {
@@ -447,11 +442,11 @@ bool global_face_distance_step(
     return true;
 }
 
-TinyAD::ScalarFunction<4, double, long> getFaceFunction(
+TinyAD::ScalarFunction<4, double, long long> getFaceFunction(
     const Eigen::MatrixXd &bc,
     poly_mesh_data &mesh_data,
     face_arap_data &data) {
-    auto func = TinyAD::scalar_function<4>(TinyAD::range(data.Polygons.rows()));
+    TinyAD::ScalarFunction<4, double, long long> func = TinyAD::scalar_function<4>(TinyAD::range(data.Polygons.rows()));
 
     func.add_elements<10>(TinyAD::range(data.triangles.size()),
                           [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {

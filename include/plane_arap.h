@@ -46,17 +46,17 @@ void getRotations(
     poly_mesh_data &mesh_data,
     plane_arap_data &data);
 
-TinyAD::ScalarFunction<4, double, long> getFunction(
+TinyAD::ScalarFunction<4, double, long long> getFunction(
     const Eigen::MatrixXd &bc,
     poly_mesh_data &mesh_data,
     plane_arap_data &data);
 
-TinyAD::ScalarFunction<4, double, long> getEdgeFunction(
+TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
     const Eigen::MatrixXd &bc,
     poly_mesh_data &mesh_data,
     plane_arap_data &data);
 
-TinyAD::ScalarFunction<3, double, long> getBlockFunction(
+TinyAD::ScalarFunction<3, double, long long> getBlockFunction(
     const Eigen::MatrixXd &bc,
     poly_mesh_data &mesh_data,
     plane_arap_data &data);

@@ -116,7 +116,7 @@ void getFaceRotations(
     poly_mesh_data &mesh_data,
     face_arap_data &data);
 
-TinyAD::ScalarFunction<4, double, long> getFaceFunction(
+TinyAD::ScalarFunction<4, double, long long> getFaceFunction(
     const Eigen::MatrixXd &bc,
     poly_mesh_data &mesh_data,
     face_arap_data &data);
