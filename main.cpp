@@ -91,92 +91,6 @@ void calculateFaceMatrixAndPolygons(std::vector<std::vector<int> > polyF, int fa
     Polygons.row(Polygons.rows() - 1) = polygon;
 }
 
-// void calculateFaceCenters(Eigen::MatrixXi polyF, int face) {
-//     centers.conservativeResize(centers.rows() + 1, 3);
-//     Eigen::Vector3d center;
-//     int size = faceSize(polyF.row(face));
-//     for (int j = 0; j < size; j++) {
-//         Eigen::Vector3d p = V.row(polyF(face, j));
-//         center += p * (1.0 / (size * 1.0));
-//     }
-//     centers.row(face) = center;
-// }
-//
-// void calculateHood(Eigen::MatrixXi polyF, int face) {
-//     std::vector<int> neighbours;
-//     Eigen::Vector3d center;
-//     int size = faceSize(polyF.row(face));
-//
-//     //TODO: find faces that are also connected to last faces (makes finding connections easier)
-//     int i = 0;
-//     while (i < polyF.rows()) {
-//         bool giveUp = i == face;
-//         for (int j = 0; j < neighbours.size(); j++) {
-//             if (i == neighbours[j]) {
-//                 giveUp = true;
-//             }
-//         }
-//         if (giveUp) {
-//             i++;
-//             continue;
-//         }
-//         int otherFaceSize = faceSize(polyF.row(i));
-//         int lastFaceSize = -1;
-//         if (neighbours.size() > 0) {
-//             lastFaceSize = faceSize(polyF.row(neighbours[neighbours.size() - 1]));
-//         }
-//         int count = 0;
-//         int count2 = 0;
-//
-//         for (int j = 0; j < otherFaceSize; j++) {
-//             for (int k = 0; k < size; k++) {
-//                 if (polyF(face, k) == polyF(i, j)) {
-//                     count++;
-//                     if (count >= 2) {
-//                         break;
-//                     }
-//                 }
-//             }
-//             for (int k = 0; k < lastFaceSize; k++) {
-//                 if (polyF(neighbours[neighbours.size() - 1], k) == polyF(i, j)) {
-//                     count2++;
-//                     if (count2 >= 2) {
-//                         break;
-//                     }
-//                 }
-//             }
-//             if (count >= 2 && (count2 >= 2 || lastFaceSize < 0)) {
-//                 break;
-//             }
-//         }
-//         if (count >= 2 && (count2 >= 2 || lastFaceSize < 0)) {
-//             neighbours.push_back(i);
-//             i = 0;
-//         } else {
-//             i++;
-//         }
-//     }
-//     Hoods[face] = neighbours;
-// }
-//
-// void setConnectivityForOneVertex(Eigen::MatrixXi polyF, int v) {
-//     connections.conservativeResize(connections.rows() + 1, 3);
-//     int count = 0;
-//     for (int i = 0; i < polyF.rows(); i++) {
-//         if (count >= 3) {
-//             return;
-//         }
-//         for (int j = 0; j < polyF.row(i).size(); j++) {
-//             if (polyF(i, j) == v) {
-//                 connections(connections.rows() - 1, count) = i;
-//                 count++;
-//                 break;
-//             }
-//         }
-//     }
-// }
-
-
 void precomputeMesh(std::vector<std::vector<int> > polyF) {
     for (int i = 0; i < polyF.size(); i++) {
         calculateFaceMatrixAndPolygons(polyF, i);
@@ -187,6 +101,8 @@ void precomputeMesh(std::vector<std::vector<int> > polyF) {
 
 
 int main(int argc, char *argv[]) {
+    std::ofstream measurementsFile;
+    measurementsFile.open("../measurements/measurements.csv");
     using namespace Eigen;
     using namespace std;
 
@@ -266,6 +182,7 @@ int main(int argc, char *argv[]) {
     }
 
     std::atomic<bool> redraw(false);
+    std::atomic<bool> measure(false);
     std::mutex m;
     bool newCons = false;
     bool changedCons = false;
@@ -306,11 +223,18 @@ int main(int argc, char *argv[]) {
             Eigen::ConjugateGradient<Eigen::SparseMatrix<double> > cg_solver;
             int i = -1;
             bool useBlockFunc = false;
+
+            //measuring stuff
+
+            std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+
             while (true) {
                 {
                     i++;
                     std::lock_guard<std::mutex> lock(m2);
                     if (newCons || changedCons) {
+                        begin = std::chrono::steady_clock::now();
+                        i = 0;
                         if (newCons) {
                             conP.conservativeResize(tempConP.size());
                             for (int j = 0; j < tempConP.size(); j++) {
@@ -385,7 +309,6 @@ int main(int argc, char *argv[]) {
                 redraw.store(true, std::memory_order_relaxed);
 
                 // getRotations(mesh_data, plane_arap_data);
-                std::cout << mesh_data.Polygons << std::endl;
                 x = func.x_from_data([&](int v_idx) {
                     return mesh_data.Polygons.row(v_idx);
                 });
@@ -401,6 +324,17 @@ int main(int argc, char *argv[]) {
                                           ? funcBlock.eval_with_hessian_proj(x_block)
                                           : func.eval_with_hessian_proj(x);
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
+
+                //measurement
+                if(measure.load(std::memory_order_relaxed)) {
+                    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+                    measurementsFile << i << " , " << std::chrono::duration_cast<std::chrono::nanoseconds> (end - begin).count() <<  " , "<< f;
+                    measurementsFile << "\n";
+                }
+
+
+
+
                 // Eigen::VectorXd d = -g * 0.03;
                 Eigen::VectorXd d = cg_solver.compute(
                     H_proj + 1e-9 * TinyAD::identity<double>(useBlockFunc ? x_block.size() : x.size())).solve(-g);
@@ -585,7 +519,12 @@ int main(int argc, char *argv[]) {
         if (key == GLFW_KEY_G) {
             onlyGradientDecent = !onlyGradientDecent;
         }
+        if (key == GLFW_KEY_S) {
+            measurementsFile.close();
+            measure.store(false, std::memory_order_relaxed);
+        }
         if (key == GLFW_KEY_M) {
+            measure.store(true, std::memory_order_relaxed);
             tempConstraints.resize(conP.size(), 3);
             for (int i = 0; i < conP.size(); i++) {
                 tempConstraints.row(i) = constraints.row(i);
