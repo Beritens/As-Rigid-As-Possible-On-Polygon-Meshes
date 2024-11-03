@@ -34,7 +34,7 @@ Eigen::Matrix3<T> getRotation(const Eigen::MatrixX<T> &v1, const Eigen::MatrixX<
         Rot = 0.5 * (Rot + Rot.inverse().transpose());
     }
 
-    if (std::abs(Rot.determinant() - 1) > 1e-6 || Rot.hasNaN()) {
+    if (std::abs(Rot.determinant() - 1) > 1e-6 || Rot.hasNaN() || !Rot.allFinite()) {
         return getRotationSVD(v1,v2);
     }
 

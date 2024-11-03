@@ -18,7 +18,6 @@
 #include <Eigen/StdVector>
 #include <vector>
 #include <algorithm>
-#include <corecrt_math_defines.h>
 #include <iostream>
 #include <math.h>
 #include <mutex>
@@ -35,6 +34,8 @@
 #include "TinyAD/Utils/LineSearch.hh"
 #include "TinyAD/Utils/NewtonDecrement.hh"
 #include "TinyAD/Utils/NewtonDirection.hh"
+
+#define M_PI           3.14159265358979323846
 
 
 typedef
@@ -210,9 +211,10 @@ int main(int argc, char *argv[]) {
             plane_arap_precomputation(mesh_data, plane_arap_data, b);
 
 
+            auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
             auto faceFunc = getFaceFunction(constraints, mesh_data, face_arap_data);
             auto func = getFunction(constraints, mesh_data, plane_arap_data);
-            auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
+
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
                 // return Polygons.row(v_idx).head(3);
@@ -390,7 +392,7 @@ int main(int argc, char *argv[]) {
                 //     //break;
                 // }
                 if (useBlockFunc.load(std::memory_order_relaxed)) {
-                    x_block = TinyAD::line_search(x_block, d, f, g, funcBlock);
+                    x_block = TinyAD::line_search(x_block, d, f, g, funcBlock, 1.0, 0.5, 64);
                 } else {
                     x = TinyAD::line_search(x, d, f, g, face.load(std::memory_order_relaxed)?faceFunc:func, 1.0, 0.5, 64);
                 }
@@ -562,9 +564,6 @@ int main(int argc, char *argv[]) {
         if (key == GLFW_KEY_SPACE) {
             selectMode = !selectMode;
         }
-        if (key == GLFW_KEY_G) {
-            onlyGradientDescent.store(onlyGradientDescent.load(std::memory_order_relaxed), std::memory_order_relaxed);
-        }
         if (key == GLFW_KEY_S) {
             measurementsFile.close();
             measure.store(false, std::memory_order_relaxed);
@@ -641,6 +640,11 @@ int main(int argc, char *argv[]) {
         bool block_value = useBlockFunc.load(std::memory_order_relaxed);
         if (ImGui::Checkbox("Block", &block_value)) {
             useBlockFunc.store(block_value, std::memory_order_relaxed);
+        }
+
+        bool gd_value = onlyGradientDescent.load(std::memory_order_relaxed);
+        if (ImGui::Checkbox("Only Gradient Descent", &gd_value)) {
+            onlyGradientDescent.store(gd_value, std::memory_order_relaxed);
         }
 
         ImGui::End();

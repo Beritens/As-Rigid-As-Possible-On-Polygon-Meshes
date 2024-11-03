@@ -396,9 +396,6 @@ TinyAD::ScalarFunction<4, double, long long> getFunction(
                                   } else {
                                       pol = element.variables(f);
                                   }
-                                  // Eigen::Vector3<T> normal = element.variables(f);
-                                  // pol.head(3) = normal;
-                                  // pol(3) = mesh_data.Polygons(f, 3);
                                   polygons.push_back(pol);
                               }
                               Eigen::Vector3<T> vert = getPoint<T>(polygons[0], polygons[1], polygons[2]);
@@ -414,9 +411,6 @@ TinyAD::ScalarFunction<4, double, long long> getFunction(
                                       } else {
                                           pol = element.variables(f);
                                       }
-                                      // Eigen::Vector3<T> normal = element.variables(f);
-                                      // pol.head(3) = normal;
-                                      // pol(3) = mesh_data.Polygons(f, 3);
                                       neighPolygons.push_back(pol);
                                   }
                                   Eigen::Vector3<T> neighborVert = getPoint<T>(
@@ -426,32 +420,6 @@ TinyAD::ScalarFunction<4, double, long long> getFunction(
 
                               int size = mesh_data.Hoods[v_idx].size();
                               Eigen::Matrix3d Rot = data.R.block<3, 3>(0, v_idx * 3);
-                              // Eigen::MatrixXd V1(points.size() * 3, 3);
-                              // Eigen::MatrixX<T> V2(points.size() * 3, 3);
-                              //
-                              // for (int j = 0; j < size; j++) {
-                              //     int next = (j + 1) % size;
-                              //     int n1 = mesh_data.Hoods[v_idx][j];
-                              //     int n2 = mesh_data.Hoods[v_idx][next];
-                              //     Eigen::Vector3d originalNeighbor = data.V.row(n1);
-                              //     Eigen::Vector3<T> newNeighbor = points[j];
-                              //     Eigen::Vector3d originalNeighbor2 = data.V.row(n2);
-                              //     Eigen::Vector3<T> newNeighbor2 = points[next];
-                              //     V1.row(j * 3) = data.cotanWeights[v_idx][j * 3 + 2] * (ogVert - originalNeighbor);
-                              //     V2.row(j * 3) = data.cotanWeights[v_idx][j * 3 + 2] * (vert - newNeighbor);
-                              //
-                              //     V1.row(j * 3 + 1) =
-                              //             data.cotanWeights[v_idx][j * 3 + 1] * (ogVert - originalNeighbor2);
-                              //     V2.row(j * 3 + 1) = data.cotanWeights[v_idx][j * 3 + 1] * (vert - newNeighbor2);
-                              //
-                              //     V1.row(j * 3 + 2) =
-                              //             data.cotanWeights[v_idx][j * 3] * (originalNeighbor - originalNeighbor2);
-                              //     V2.row(j * 3 + 2) = data.cotanWeights[v_idx][j * 3] * (newNeighbor - newNeighbor2);
-                              // }
-                              //
-                              // Eigen::Matrix3<T> Rot = getRotation<T>(V1, V2);
-
-                              // Eigen::Matrix3d Rot = data.R.block<3, 3>(0, v_idx * 3);
 
                               T returnValue = 0;
                               for (int j = 0; j < size; j++) {
@@ -492,7 +460,6 @@ TinyAD::ScalarFunction<3, double, long long> getBlockFunction(
 
                                   element
                               );
-                              //TODO: einfach constraint berechnung hier rein packen, dann sollte es ja eig. gehen
 
                               Eigen::Index v_idx = element.handle;
                               std::vector<int> localConstrainsIndex;
