@@ -381,10 +381,6 @@ bool global_face_distance_step(
             insertInFaceB(b, tri[2], tri[1], data.cotanWeights[i][j][0], data.V, rot);
         }
     }
-    std::cout << "R" << std::endl;
-    std::cout << data.R << std::endl;
-    std::cout << "V" << std::endl;
-    std::cout << data.V << std::endl;
     assert(!b.hasNaN());
     b = NInvT * data.Bt * b;
 

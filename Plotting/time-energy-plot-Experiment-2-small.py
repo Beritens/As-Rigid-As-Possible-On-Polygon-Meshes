@@ -16,7 +16,7 @@ plt.plot(data['Time_ns'], data['Energy'], linestyle='-', color='b', marker='o')
 plt.plot(data2['Time_ns'], data2['Energy'], linestyle='-', color='r', marker='o')
 plt.xlabel('Time (ns)')
 plt.ylabel('Energy')
-plt.title('Energy vs. Time (Interpolated)')
+plt.title('Gradient Descent vs Conjugate Gradient Descent - Small Meshes')
 plt.grid(False)
 plt.show()
 

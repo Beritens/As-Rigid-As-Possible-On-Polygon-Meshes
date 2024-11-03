@@ -21,7 +21,7 @@ plt.plot(data2['Time_ns'], data2['Energy'], linestyle='-', color='r', marker='o'
 plt.plot(data3['Time_ns'], data3['Energy'], linestyle='-', color='g', marker='o')
 plt.xlabel('Time (ns)')
 plt.ylabel('Energy')
-plt.title('Energy vs. Time (Interpolated)')
+plt.title('Pure Descent vs Global Distance Step vs Block-Descent')
 plt.grid(False)
 plt.show()
 
