@@ -109,8 +109,12 @@ int main(int argc, char *argv[]) {
 
     std::vector<std::vector<int> > polyF;
 
+    std::string filePath;
+    std::cout << "Enter the path to the PLY file: ";
+    std::cin >> filePath;
 
-    happly::PLYData plyIn("../test.ply");
+
+    happly::PLYData plyIn(filePath);
     std::vector<std::array<double, 3> > vPos = plyIn.getVertexPositions();
     std::vector<std::vector<size_t> > fInd = plyIn.getFaceIndices<size_t>();
     V.conservativeResize(vPos.size(), 3);
@@ -185,6 +189,7 @@ int main(int argc, char *argv[]) {
     std::atomic<bool> measure(false);
     std::atomic<bool> face(false);
     std::atomic<bool> conjugate(false);
+    std::atomic<bool> useBlockFunc(false);
     std::mutex m;
     bool newCons = false;
     bool changedCons = false;
@@ -223,11 +228,13 @@ int main(int argc, char *argv[]) {
             double convergence_eps = 1e-2;
             Eigen::ConjugateGradient<Eigen::SparseMatrix<double> > cg_solver;
             int i = -1;
-            bool useBlockFunc = false;
+
 
             //measuring stuff
 
             std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+            std::chrono::steady_clock::time_point temp1 = std::chrono::steady_clock::now();
+            std::chrono::steady_clock::time_point temp2 = std::chrono::steady_clock::now();
 
             while (true) {
                 {
@@ -294,6 +301,7 @@ int main(int argc, char *argv[]) {
                 calcNewV(mesh_data);
                 redraw.store(true, std::memory_order_relaxed);
                 // std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                temp1 = std::chrono::steady_clock::now();
 
                 if (!onlyGradientDescent.load(std::memory_order_relaxed)) {
                     MatrixXd bc(b.size(), 3);
@@ -318,9 +326,14 @@ int main(int argc, char *argv[]) {
                 }
 
 
+
+
                 calcNewV(mesh_data);
                 Polygons = mesh_data.Polygons;
+                temp2 = std::chrono::steady_clock::now();
+                long long distanceTime = std::chrono::duration_cast<std::chrono::nanoseconds> (temp2 - temp1).count();
                 redraw.store(true, std::memory_order_relaxed);
+                temp1 = std::chrono::steady_clock::now();
 
                 // getRotations(mesh_data, plane_arap_data);
                 x = func.x_from_data([&](int v_idx) {
@@ -336,27 +349,32 @@ int main(int argc, char *argv[]) {
                 double f;
                 if(conjugate.load(std::memory_order_relaxed)) {
                     Eigen::MatrixXd H_proj;
-                    std::tie(f, g, H_proj) =face.load(std::memory_order_relaxed)? faceFunc.eval_with_hessian_proj(x) : useBlockFunc
+                    std::tie(f, g, H_proj) =face.load(std::memory_order_relaxed)? faceFunc.eval_with_hessian_proj(x) : (useBlockFunc.load(std::memory_order_relaxed)
                                               ? funcBlock.eval_with_hessian_proj(x_block)
-                                              : func.eval_with_hessian_proj(x);
+                                              : func.eval_with_hessian_proj(x));
                     d = cg_solver.compute(
-                    H_proj + 1e-9 * TinyAD::identity<double>(useBlockFunc ? x_block.size() : x.size())).solve(-g);
+                    H_proj + 1e-9 * TinyAD::identity<double>(useBlockFunc.load(std::memory_order_relaxed) ? x_block.size() : x.size())).solve(-g);
 
                 }
                 else {
-                    std::tie(f, g) = face.load(std::memory_order_relaxed)? faceFunc.eval_with_gradient(x) : useBlockFunc
+                    std::tie(f, g) = face.load(std::memory_order_relaxed)? faceFunc.eval_with_gradient(x) : (useBlockFunc.load(std::memory_order_relaxed)
                                   ? funcBlock.eval_with_gradient(x_block)
-                                  : func.eval_with_gradient(x);
+                                  : func.eval_with_gradient(x));
                     d = -g * 0.03;
                 }
 
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
 
-
+                temp2 = std::chrono::steady_clock::now();
+                long long gradientTime = std::chrono::duration_cast<std::chrono::nanoseconds> (temp2 - temp1).count();
                 //measurement
                 if(measure.load(std::memory_order_relaxed)) {
                     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-                    measurementsFile << i << " , " << std::chrono::duration_cast<std::chrono::nanoseconds> (end - begin).count() <<  " , "<< f;
+                    measurementsFile << i << " , "
+                    << std::chrono::duration_cast<std::chrono::nanoseconds> (end - begin).count() <<  " , "
+                    << distanceTime <<  " , "
+                    << gradientTime <<  " , "
+                    << f;
                     measurementsFile << "\n";
                 }
 
@@ -371,14 +389,14 @@ int main(int argc, char *argv[]) {
                 // if (TinyAD::newton_decrement(d, g) < convergence_eps) {
                 //     //break;
                 // }
-                if (useBlockFunc) {
+                if (useBlockFunc.load(std::memory_order_relaxed)) {
                     x_block = TinyAD::line_search(x_block, d, f, g, funcBlock);
                 } else {
                     x = TinyAD::line_search(x, d, f, g, face.load(std::memory_order_relaxed)?faceFunc:func, 1.0, 0.5, 64);
                 }
 
 
-                if (useBlockFunc) {
+                if (useBlockFunc.load(std::memory_order_relaxed)) {
                     funcBlock.x_to_data(x_block, [&](int v_idx, const Eigen::VectorXd &p) {
                         mesh_data.Polygons.row(v_idx).head(3) = p.normalized();
                     });
@@ -618,6 +636,11 @@ int main(int argc, char *argv[]) {
         bool face_value = face.load(std::memory_order_relaxed);
         if (ImGui::Checkbox("Face", &face_value)) {
             face.store(face_value, std::memory_order_relaxed);
+        }
+
+        bool block_value = useBlockFunc.load(std::memory_order_relaxed);
+        if (ImGui::Checkbox("Block", &block_value)) {
+            useBlockFunc.store(block_value, std::memory_order_relaxed);
         }
 
         ImGui::End();
