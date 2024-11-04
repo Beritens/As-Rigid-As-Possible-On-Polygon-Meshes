@@ -13,6 +13,8 @@
 #include <igl/opengl/glfw/imgui/ImGuiPlugin.h>
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 #include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
+#include <igl/stb/write_image.h>
+#include <igl/stb/read_image.h>
 
 #include <Eigen/Geometry>
 #include <Eigen/StdVector>
@@ -255,10 +257,9 @@ int main(int argc, char *argv[]) {
                                 b(j) = conP(j);
                             }
                             // FACE
-                            if(face.load(std::memory_order_relaxed)) {
+                            if (face.load(std::memory_order_relaxed)) {
                                 face_arap_precomputation(mesh_data, face_arap_data, b);
-                            }
-                            else {
+                            } else {
                                 plane_arap_precomputation(mesh_data, plane_arap_data, b);
                             }
                         }
@@ -282,15 +283,13 @@ int main(int argc, char *argv[]) {
                             }
                             calcNewV(mesh_data);
                             //FACE
-                            if(face.load(std::memory_order_relaxed)) {
+                            if (face.load(std::memory_order_relaxed)) {
                                 getFaceRotations(mesh_data, face_arap_data);
                                 global_face_distance_step(bc, mesh_data, face_arap_data);
-                            }
-                            else {
+                            } else {
                                 getRotations(mesh_data, plane_arap_data);
                                 global_distance_step(bc, mesh_data, plane_arap_data);
                             }
-
                         }
                     }
                 }
@@ -317,23 +316,20 @@ int main(int argc, char *argv[]) {
                         }
                     }
                     //FACE
-                    if(face.load(std::memory_order_relaxed)) {
+                    if (face.load(std::memory_order_relaxed)) {
                         getFaceRotations(mesh_data, face_arap_data);
                         global_face_distance_step(bc, mesh_data, face_arap_data);
-                    }
-                    else {
+                    } else {
                         getRotations(mesh_data, plane_arap_data);
                         global_distance_step(bc, mesh_data, plane_arap_data);
                     }
                 }
 
 
-
-
                 calcNewV(mesh_data);
                 Polygons = mesh_data.Polygons;
                 temp2 = std::chrono::steady_clock::now();
-                long long distanceTime = std::chrono::duration_cast<std::chrono::nanoseconds> (temp2 - temp1).count();
+                long long distanceTime = std::chrono::duration_cast<std::chrono::nanoseconds>(temp2 - temp1).count();
                 redraw.store(true, std::memory_order_relaxed);
                 temp1 = std::chrono::steady_clock::now();
 
@@ -349,41 +345,39 @@ int main(int argc, char *argv[]) {
                 VectorXd d;
                 VectorXd g;
                 double f;
-                if(conjugate.load(std::memory_order_relaxed)) {
+                if (conjugate.load(std::memory_order_relaxed)) {
                     Eigen::MatrixXd H_proj;
-                    std::tie(f, g, H_proj) =face.load(std::memory_order_relaxed)? faceFunc.eval_with_hessian_proj(x) : (useBlockFunc.load(std::memory_order_relaxed)
-                                              ? funcBlock.eval_with_hessian_proj(x_block)
-                                              : func.eval_with_hessian_proj(x));
+                    std::tie(f, g, H_proj) = face.load(std::memory_order_relaxed)
+                                                 ? faceFunc.eval_with_hessian_proj(x)
+                                                 : (useBlockFunc.load(std::memory_order_relaxed)
+                                                        ? funcBlock.eval_with_hessian_proj(x_block)
+                                                        : func.eval_with_hessian_proj(x));
                     d = cg_solver.compute(
-                    H_proj + 1e-9 * TinyAD::identity<double>(useBlockFunc.load(std::memory_order_relaxed) ? x_block.size() : x.size())).solve(-g);
-
-                }
-                else {
-                    std::tie(f, g) = face.load(std::memory_order_relaxed)? faceFunc.eval_with_gradient(x) : (useBlockFunc.load(std::memory_order_relaxed)
-                                  ? funcBlock.eval_with_gradient(x_block)
-                                  : func.eval_with_gradient(x));
+                        H_proj + 1e-9 * TinyAD::identity<double>(
+                            useBlockFunc.load(std::memory_order_relaxed) ? x_block.size() : x.size())).solve(-g);
+                } else {
+                    std::tie(f, g) = face.load(std::memory_order_relaxed)
+                                         ? faceFunc.eval_with_gradient(x)
+                                         : (useBlockFunc.load(std::memory_order_relaxed)
+                                                ? funcBlock.eval_with_gradient(x_block)
+                                                : func.eval_with_gradient(x));
                     d = -g * 0.03;
                 }
 
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
 
                 temp2 = std::chrono::steady_clock::now();
-                long long gradientTime = std::chrono::duration_cast<std::chrono::nanoseconds> (temp2 - temp1).count();
+                long long gradientTime = std::chrono::duration_cast<std::chrono::nanoseconds>(temp2 - temp1).count();
                 //measurement
-                if(measure.load(std::memory_order_relaxed)) {
+                if (measure.load(std::memory_order_relaxed)) {
                     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
                     measurementsFile << i << " , "
-                    << std::chrono::duration_cast<std::chrono::nanoseconds> (end - begin).count() <<  " , "
-                    << distanceTime <<  " , "
-                    << gradientTime <<  " , "
-                    << f;
+                            << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() << " , "
+                            << distanceTime << " , "
+                            << gradientTime << " , "
+                            << f;
                     measurementsFile << "\n";
                 }
-
-
-
-
-
 
 
                 // std::cout << H_proj << std::endl;
@@ -394,7 +388,8 @@ int main(int argc, char *argv[]) {
                 if (useBlockFunc.load(std::memory_order_relaxed)) {
                     x_block = TinyAD::line_search(x_block, d, f, g, funcBlock, 1.0, 0.5, 64);
                 } else {
-                    x = TinyAD::line_search(x, d, f, g, face.load(std::memory_order_relaxed)?faceFunc:func, 1.0, 0.5, 64);
+                    x = TinyAD::line_search(x, d, f, g, face.load(std::memory_order_relaxed) ? faceFunc : func, 1.0,
+                                            0.5, 64);
                 }
 
 
@@ -563,6 +558,21 @@ int main(int argc, char *argv[]) {
     viewer.callback_key_pressed = [&](igl::opengl::glfw::Viewer &viewer, unsigned char key, int modifier) -> bool {
         if (key == GLFW_KEY_SPACE) {
             selectMode = !selectMode;
+        }
+        //https://github.com/libigl/libigl/blob/f962e4a6b68afe978dc12a63702b7846a3e7a6ed/tutorial/607_ScreenCapture/main.cpp
+        if (key == '1') {
+            // Allocate temporary buffers
+            Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> R(1280, 800);
+            Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> G(1280, 800);
+            Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> B(1280, 800);
+            Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> A(1280, 800);
+
+            // Draw the scene in the buffers
+            viewer.core().draw_buffer(
+                viewer.data(), false, R, G, B, A);
+
+            // Save it to a PNG
+            igl::stb::write_image("out.png", R, G, B, A);
         }
         if (key == GLFW_KEY_S) {
             measurementsFile.close();

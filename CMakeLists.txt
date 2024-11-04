@@ -32,7 +32,7 @@ igl_include(glfw)
 #igl_include(embree)
 igl_include(imgui)
 #igl_include(opengl)
-#igl_include(stb)
+igl_include(stb)
 #igl_include(predicates)
 #igl_include(xml)
 #igl_include(copyleft cgal)
@@ -81,7 +81,7 @@ target_link_libraries(deformation srcfiles igl::core igl::glfw igl::imgui TinyAD
         ## Other modules you could link to
         # igl::embree
         # igl::opengl
-        # igl::stb
+        igl::stb
         # igl::predicates
         # igl::xml
         # igl_copyleft::cgal
