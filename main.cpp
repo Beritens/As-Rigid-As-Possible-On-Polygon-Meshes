@@ -220,10 +220,10 @@ int main(int argc, char *argv[]) {
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
                 // return Polygons.row(v_idx).head(3);
-                return mesh_data.Polygons.row(v_idx);
+                return mesh_data.Planes.row(v_idx);
             });
             Eigen::VectorXd x_block = funcBlock.x_from_data([&](int v_idx) {
-                return mesh_data.Polygons.row(v_idx).head(3);
+                return mesh_data.Planes.row(v_idx).head(3);
             });
             // Projected Newton
 
@@ -327,7 +327,7 @@ int main(int argc, char *argv[]) {
 
 
                 calcNewV(mesh_data);
-                Polygons = mesh_data.Polygons;
+                Polygons = mesh_data.Planes;
                 temp2 = std::chrono::steady_clock::now();
                 long long distanceTime = std::chrono::duration_cast<std::chrono::nanoseconds>(temp2 - temp1).count();
                 redraw.store(true, std::memory_order_relaxed);
@@ -335,11 +335,11 @@ int main(int argc, char *argv[]) {
 
                 // getRotations(mesh_data, plane_arap_data);
                 x = func.x_from_data([&](int v_idx) {
-                    return mesh_data.Polygons.row(v_idx);
+                    return mesh_data.Planes.row(v_idx);
                 });
 
                 x_block = funcBlock.x_from_data([&](int v_idx) {
-                    return mesh_data.Polygons.row(v_idx).head(3).normalized();
+                    return mesh_data.Planes.row(v_idx).head(3).normalized();
                 });
 
                 VectorXd d;
@@ -395,12 +395,12 @@ int main(int argc, char *argv[]) {
 
                 if (useBlockFunc.load(std::memory_order_relaxed)) {
                     funcBlock.x_to_data(x_block, [&](int v_idx, const Eigen::VectorXd &p) {
-                        mesh_data.Polygons.row(v_idx).head(3) = p.normalized();
+                        mesh_data.Planes.row(v_idx).head(3) = p.normalized();
                     });
                 } else {
                     func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
-                        mesh_data.Polygons.row(v_idx) = p;
-                        mesh_data.Polygons.row(v_idx).head(3) = mesh_data.Polygons.row(v_idx).head(3).normalized();
+                        mesh_data.Planes.row(v_idx) = p;
+                        mesh_data.Planes.row(v_idx).head(3) = mesh_data.Planes.row(v_idx).head(3).normalized();
                     });
                 }
 
@@ -408,8 +408,8 @@ int main(int argc, char *argv[]) {
                 for (int conIdx = 0; conIdx < conP.size(); conIdx++) {
                     Eigen::Vector4d vecs[3];
                     int j = 0;
-                    for (auto k: mesh_data.VertPolygons[conP(conIdx)]) {
-                        vecs[j] = mesh_data.Polygons.row(k);
+                    for (auto k: mesh_data.FaceNeighbors[conP(conIdx)]) {
+                        vecs[j] = mesh_data.Planes.row(k);
                         j++;
                     }
                     Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
@@ -423,8 +423,8 @@ int main(int argc, char *argv[]) {
 
                     Eigen::Vector3d dist = normM * constraints.row(conIdx).transpose();
                     j = 0;
-                    for (auto k: mesh_data.VertPolygons[conP(conIdx)]) {
-                        mesh_data.Polygons(k, 3) = dist(j);
+                    for (auto k: mesh_data.FaceNeighbors[conP(conIdx)]) {
+                        mesh_data.Planes(k, 3) = dist(j);
                         j++;
                     }
                 }
