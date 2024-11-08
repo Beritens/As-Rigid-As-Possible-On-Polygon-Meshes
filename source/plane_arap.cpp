@@ -193,7 +193,7 @@ bool global_distance_step(
 
             j++;
         }
-        Eigen::MatrixXd NInv = N.completeOrthogonalDecomposition().pseudoInverse();
+        Eigen::MatrixXd NInv = N.inverse();
 
         invNs.push_back(NInv);
         nIdx.push_back(idx);

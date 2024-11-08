@@ -194,10 +194,12 @@ int main(int argc, char *argv[]) {
     std::atomic<bool> face(false);
     std::atomic<bool> conjugate(false);
     std::atomic<bool> useBlockFunc(false);
+    std::atomic<bool> noInitalGuess(false);
     std::mutex m;
     bool newCons = false;
     bool changedCons = false;
     std::atomic<bool> onlyGradientDescent(false);
+    std::atomic<bool> onlyDistantStep(false);
     std::mutex m2;
     std::thread optimization_thread(
         [&]() {
@@ -272,24 +274,26 @@ int main(int argc, char *argv[]) {
                         changedCons = false;
 
                         if (onlyGradientDescent.load(std::memory_order_relaxed)) {
-                            MatrixXd bc(b.size(), 3);
-                            for (int j = 0; j < b.size(); j++) {
-                                bc.row(j) = mesh_data.V.row(b(j));
-                                for (int k = 0; k < conP.size(); k++) {
-                                    if (conP(k) == b(j)) {
-                                        bc.row(j) = constraints.row(k);
-                                        break;
+                            if (!noInitalGuess.load(std::memory_order_relaxed)) {
+                                MatrixXd bc(b.size(), 3);
+                                for (int j = 0; j < b.size(); j++) {
+                                    bc.row(j) = mesh_data.V.row(b(j));
+                                    for (int k = 0; k < conP.size(); k++) {
+                                        if (conP(k) == b(j)) {
+                                            bc.row(j) = constraints.row(k);
+                                            break;
+                                        }
                                     }
                                 }
-                            }
-                            calcNewV(mesh_data);
-                            //FACE
-                            if (face.load(std::memory_order_relaxed)) {
-                                getFaceRotations(mesh_data, face_arap_data);
-                                global_face_distance_step(bc, mesh_data, face_arap_data);
-                            } else {
-                                getRotations(mesh_data, plane_arap_data);
-                                global_distance_step(bc, mesh_data, plane_arap_data);
+                                calcNewV(mesh_data);
+                                //FACE
+                                if (face.load(std::memory_order_relaxed)) {
+                                    getFaceRotations(mesh_data, face_arap_data);
+                                    global_face_distance_step(bc, mesh_data, face_arap_data);
+                                } else {
+                                    getRotations(mesh_data, plane_arap_data);
+                                    global_distance_step(bc, mesh_data, plane_arap_data);
+                                }
                             }
                         }
                     }
@@ -304,6 +308,7 @@ int main(int argc, char *argv[]) {
                 redraw.store(true, std::memory_order_relaxed);
                 // std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 temp1 = std::chrono::steady_clock::now();
+
 
                 if (!onlyGradientDescent.load(std::memory_order_relaxed)) {
                     MatrixXd bc(b.size(), 3);
@@ -332,7 +337,15 @@ int main(int argc, char *argv[]) {
                 temp2 = std::chrono::steady_clock::now();
                 long long distanceTime = std::chrono::duration_cast<std::chrono::nanoseconds>(temp2 - temp1).count();
                 redraw.store(true, std::memory_order_relaxed);
+
                 temp1 = std::chrono::steady_clock::now();
+
+                if (face.load(std::memory_order_relaxed)) {
+                    getFaceRotations(mesh_data, face_arap_data);
+                } else {
+                    getRotations(mesh_data, plane_arap_data);
+                }
+
 
                 // getRotations(mesh_data, plane_arap_data);
                 x = func.x_from_data([&](int v_idx) {
@@ -342,6 +355,16 @@ int main(int argc, char *argv[]) {
                 x_block = funcBlock.x_from_data([&](int v_idx) {
                     return mesh_data.Planes.row(v_idx).head(3).normalized();
                 });
+
+                if (onlyDistantStep.load(std::memory_order_relaxed)) {
+                    double f = face.load(std::memory_order_relaxed)
+                                   ? faceFunc.eval(x)
+                                   : (useBlockFunc.load(std::memory_order_relaxed)
+                                          ? funcBlock.eval(x_block)
+                                          : func.eval(x));
+                    TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
+                    continue;
+                }
 
                 VectorXd d;
                 VectorXd g;
@@ -656,6 +679,16 @@ int main(int argc, char *argv[]) {
         bool gd_value = onlyGradientDescent.load(std::memory_order_relaxed);
         if (ImGui::Checkbox("Only Gradient Descent", &gd_value)) {
             onlyGradientDescent.store(gd_value, std::memory_order_relaxed);
+        }
+
+        bool ds_value = onlyDistantStep.load(std::memory_order_relaxed);
+        if (ImGui::Checkbox("Only Distance Step", &ds_value)) {
+            onlyDistantStep.store(ds_value, std::memory_order_relaxed);
+        }
+
+        bool initGuess_value = noInitalGuess.load(std::memory_order_relaxed);
+        if (ImGui::Checkbox("No initial guess", &initGuess_value)) {
+            noInitalGuess.store(initGuess_value, std::memory_order_relaxed);
         }
 
         ImGui::End();

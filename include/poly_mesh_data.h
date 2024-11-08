@@ -86,10 +86,25 @@ inline void calcNewV(poly_mesh_data &data);
 
 inline void makeDual(poly_mesh_data &data) {
     Eigen::MatrixXd newV = data.originalV;
+    std::set<int> transformedVerts;
+    int currentNum = newV.rows();
     std::vector<std::vector<int> > newF = data.F;
     bool mustRecompute = false;
     for (int i = 0; i < data.originalV.rows(); i++) {
         if (data.VertNeighbors[i].size() <= 3) {
+            continue;
+        }
+        bool skip = false;
+        for (int j: data.VertNeighbors[i]) {
+            if (transformedVerts.find(j) != transformedVerts.end()) {
+                skip = true;
+            }
+            if (j >= currentNum) {
+                //neighbour is already a new vert. Do this next iteration (too lazy to correctly set neighbors)
+                skip = true;
+            }
+        }
+        if (skip) {
             continue;
         }
         mustRecompute = true;
@@ -105,6 +120,7 @@ inline void makeDual(poly_mesh_data &data) {
         }
         newV.row(i) = 0.999 * newV.row(i) + 0.001 * newV.row(data.VertNeighbors[i][0]);
         newF.push_back(newFace);
+        transformedVerts.insert(i);
         for (auto f_idx: data.FaceNeighbors[i]) {
             int size = newF[f_idx].size();
             for (int j = 0; j < size; j++) {
@@ -188,14 +204,29 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::
                 if (alreadyIn) {
                     continue;
                 }
-                for (auto p1: data.FaceNeighbors[data.VertNeighbors[i][data.VertNeighbors[i].size() - 1]]) {
+                int v2 = data.VertNeighbors[i][data.VertNeighbors[i].size() - 1];
+                for (auto p1: data.FaceNeighbors[v2]) {
                     for (auto p2: data.FaceNeighbors[v]) {
                         if (p1 == p2) {
                             for (auto po: data.FaceNeighbors[i]) {
                                 if (po == p1) {
-                                    data.VertNeighbors[i].push_back(v);
-                                    fin = true;
-                                    break;
+                                    for (int vp = 0; vp < data.F[po].size(); vp++) {
+                                        if (data.F[po][vp] == i) {
+                                            int before = (vp + data.F[po].size() - 1) % data.F[po].size();
+                                            int after = (vp + 1) % data.F[po].size();
+                                            bool rightFace =
+                                                    (data.F[po][before] == v || data.F[po][before] == v2) && (
+                                                        data.F[po][after] == v || data.F[po][after] == v2);
+                                            if (rightFace) {
+                                                data.VertNeighbors[i].push_back(v);
+                                                fin = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (fin) {
+                                        break;
+                                    }
                                 }
                             }
                             if (fin) {
@@ -214,6 +245,8 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::
         }
     }
     makeDual(data);
+    calcNewV(data);
+    data.originalV = data.V;
 }
 
 inline std::vector<std::vector<int> > calculateTriangle(std::vector<Eigen::Vector3d> verts, Eigen::Vector3d normal) {
