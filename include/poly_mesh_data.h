@@ -67,7 +67,7 @@ inline void calculatePolygons(poly_mesh_data &data) {
             Eigen::Vector3d pointc = data.V.row(data.F[i][k]);
             Eigen::Vector3d a = pointb - pointa;
             Eigen::Vector3d b = pointc - pointa;
-            normal += a.cross(b).normalized();
+            normal += a.cross(b);
         }
         normal = normal.normalized();
         double dist = 0;
@@ -117,16 +117,21 @@ inline void makeDual(poly_mesh_data &data) {
                     newF[f_idx][next] = n1;
                     newF[f_idx].insert(newF[f_idx].begin() + next + 1, n2);
 
-                    for (int k = 0; k < data.VertNeighbors[v1].size(); k++) {
-                        if (data.VertNeighbors[v1][k] == i) {
-                            data.VertNeighbors[v1][k] = n1;
-                            break;
+                    //v1 or v2 could also be verts with more than 3 neightsbours, adjust neighbourhood
+                    if (v1 < data.VertNeighbors.size()) {
+                        for (int k = 0; k < data.VertNeighbors[v1].size(); k++) {
+                            if (data.VertNeighbors[v1][k] == i) {
+                                data.VertNeighbors[v1][k] = n1;
+                                break;
+                            }
                         }
                     }
-                    for (int k = 0; k < data.VertNeighbors[v2].size(); k++) {
-                        if (data.VertNeighbors[v2][k] == i) {
-                            data.VertNeighbors[v2][k] = n2;
-                            break;
+                    if (v2 < data.VertNeighbors.size()) {
+                        for (int k = 0; k < data.VertNeighbors[v2].size(); k++) {
+                            if (data.VertNeighbors[v2][k] == i) {
+                                data.VertNeighbors[v2][k] = n2;
+                                break;
+                            }
                         }
                     }
                     break;

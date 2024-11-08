@@ -73,7 +73,7 @@ double point_y = 0;
 double point_z = 0;
 
 
-void draw_face_mesh(igl::opengl::glfw::Viewer &viewer, const Eigen::MatrixXd &poly) {
+void draw_face_mesh(igl::opengl::glfw::Viewer &viewer) {
     calculateTriangles(mesh_data);
     viewer.data().set_mesh(mesh_data.V, mesh_data.T);
 }
@@ -157,7 +157,8 @@ int main(int argc, char *argv[]) {
     //     std::cout << std::endl;
     // }
     igl::opengl::glfw::Viewer viewer;
-    draw_face_mesh(viewer, Polygons);
+    calcNewV(mesh_data);
+    draw_face_mesh(viewer);
 
     Eigen::MatrixXd V1_test(5, 3);
     Eigen::MatrixXd V2_test(5, 3);
@@ -608,7 +609,7 @@ int main(int argc, char *argv[]) {
 
     viewer.callback_pre_draw = [&](igl::opengl::glfw::Viewer &viewer) {
         if (redraw.load(std::memory_order_relaxed)) {
-            draw_face_mesh(viewer, Polygons);
+            draw_face_mesh(viewer);
 
             //viewer.data().add_points(point, Eigen::RowVector3d(1, 0, 0));
 
