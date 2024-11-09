@@ -76,6 +76,7 @@ double point_z = 0;
 void draw_face_mesh(igl::opengl::glfw::Viewer &viewer) {
     calculateTriangles(mesh_data);
     viewer.data().set_mesh(mesh_data.V, mesh_data.T);
+    viewer.data().compute_normals();
 }
 
 
@@ -195,6 +196,7 @@ int main(int argc, char *argv[]) {
     std::atomic<bool> conjugate(false);
     std::atomic<bool> useBlockFunc(false);
     std::atomic<bool> noInitalGuess(false);
+    std::atomic<bool> triangleVersion(false);
     std::mutex m;
     bool newCons = false;
     bool changedCons = false;
@@ -212,8 +214,15 @@ int main(int argc, char *argv[]) {
                 b(i) = conP(i);
             }
 
+            arap_data.energy = face.load(std::memory_order_relaxed)
+                                   ? igl::ARAP_ENERGY_TYPE_ELEMENTS
+                                   : igl::ARAP_ENERGY_TYPE_SPOKES_AND_RIMS;
             face_arap_precomputation(mesh_data, face_arap_data, b);
             plane_arap_precomputation(mesh_data, plane_arap_data, b);
+
+
+            calculateTriangles(mesh_data);
+            igl::arap_precomputation(mesh_data.V, mesh_data.T, 3, b, arap_data);
 
 
             auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
@@ -247,7 +256,10 @@ int main(int argc, char *argv[]) {
                 {
                     i++;
                     std::lock_guard<std::mutex> lock(m2);
-                    if (newCons || changedCons) {
+                    bool switchedEnergy = (triangleVersion.load(std::memory_order_relaxed) && (
+                                               arap_data.energy == igl::ARAP_ENERGY_TYPE_ELEMENTS) != face.load(
+                                               std::memory_order_relaxed));
+                    if (newCons || changedCons || switchedEnergy) {
                         begin = std::chrono::steady_clock::now();
                         i = 0;
                         if (newCons) {
@@ -260,11 +272,23 @@ int main(int argc, char *argv[]) {
                                 b(j) = conP(j);
                             }
                             // FACE
-                            if (face.load(std::memory_order_relaxed)) {
-                                face_arap_precomputation(mesh_data, face_arap_data, b);
+                            if (triangleVersion.load(std::memory_order_relaxed)) {
+                                arap_data.energy = face.load(std::memory_order_relaxed)
+                                                       ? igl::ARAP_ENERGY_TYPE_ELEMENTS
+                                                       : igl::ARAP_ENERGY_TYPE_SPOKES_AND_RIMS;
+                                igl::arap_precomputation(mesh_data.originalV, mesh_data.T, 3, b, arap_data);
                             } else {
-                                plane_arap_precomputation(mesh_data, plane_arap_data, b);
+                                if (face.load(std::memory_order_relaxed)) {
+                                    face_arap_precomputation(mesh_data, face_arap_data, b);
+                                } else {
+                                    plane_arap_precomputation(mesh_data, plane_arap_data, b);
+                                }
                             }
+                        } else if (switchedEnergy) {
+                            arap_data.energy = face.load(std::memory_order_relaxed)
+                                                   ? igl::ARAP_ENERGY_TYPE_ELEMENTS
+                                                   : igl::ARAP_ENERGY_TYPE_SPOKES_AND_RIMS;
+                            igl::arap_precomputation(mesh_data.originalV, mesh_data.T, 3, b, arap_data);
                         }
                         constraints.conservativeResize(conP.size(), 3);
                         for (int j = 0; j < conP.size(); j++) {
@@ -273,7 +297,8 @@ int main(int argc, char *argv[]) {
                         newCons = false;
                         changedCons = false;
 
-                        if (onlyGradientDescent.load(std::memory_order_relaxed)) {
+                        if (onlyGradientDescent.load(std::memory_order_relaxed) && !triangleVersion.load(
+                                std::memory_order_relaxed)) {
                             if (!noInitalGuess.load(std::memory_order_relaxed)) {
                                 MatrixXd bc(b.size(), 3);
                                 for (int j = 0; j < b.size(); j++) {
@@ -303,6 +328,21 @@ int main(int argc, char *argv[]) {
                     continue;
                 }
 
+                if (triangleVersion.load(std::memory_order_relaxed)) {
+                    MatrixXd bc(b.size(), 3);
+                    for (int j = 0; j < b.size(); j++) {
+                        bc.row(j) = mesh_data.V.row(b(j));
+                        for (int k = 0; k < conP.size(); k++) {
+                            if (conP(k) == b(j)) {
+                                bc.row(j) = constraints.row(k);
+                                break;
+                            }
+                        }
+                    }
+                    igl::arap_solve(bc, arap_data, mesh_data.V);
+                    redraw.store(true, std::memory_order_relaxed);
+                    continue;
+                }
 
                 calcNewV(mesh_data);
                 redraw.store(true, std::memory_order_relaxed);
@@ -632,7 +672,12 @@ int main(int argc, char *argv[]) {
 
     viewer.callback_pre_draw = [&](igl::opengl::glfw::Viewer &viewer) {
         if (redraw.load(std::memory_order_relaxed)) {
-            draw_face_mesh(viewer);
+            if (triangleVersion.load(std::memory_order_relaxed)) {
+                viewer.data().set_mesh(mesh_data.V, mesh_data.T);
+                viewer.data().compute_normals();
+            } else {
+                draw_face_mesh(viewer);
+            }
 
             //viewer.data().add_points(point, Eigen::RowVector3d(1, 0, 0));
 
@@ -689,6 +734,11 @@ int main(int argc, char *argv[]) {
         bool initGuess_value = noInitalGuess.load(std::memory_order_relaxed);
         if (ImGui::Checkbox("No initial guess", &initGuess_value)) {
             noInitalGuess.store(initGuess_value, std::memory_order_relaxed);
+        }
+
+        bool triangle_value = triangleVersion.load(std::memory_order_relaxed);
+        if (ImGui::Checkbox("Use Triangles", &triangle_value)) {
+            triangleVersion.store(triangle_value, std::memory_order_relaxed);
         }
 
         ImGui::End();

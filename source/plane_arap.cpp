@@ -188,7 +188,7 @@ bool global_distance_step(
         std::vector<int> idx;
         int j = 0;
         for (auto pol: polygons) {
-            N.row(j) = mesh_data.Planes.row(pol).head(3);
+            N.row(j) = mesh_data.Planes.row(pol).head(3).normalized();
             idx.push_back(pol);
 
             j++;
