@@ -103,6 +103,22 @@ void precomputeMesh(std::vector<std::vector<int> > polyF) {
     }
 }
 
+void screenShot(igl::opengl::glfw::Viewer &viewer, std::string fileName) {
+    //https://github.com/libigl/libigl/blob/f962e4a6b68afe978dc12a63702b7846a3e7a6ed/tutorial/607_ScreenCapture/main.cpp
+    // Allocate temporary buffers
+    Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> R(1280, 800);
+    Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> G(1280, 800);
+    Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> B(1280, 800);
+    Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> A(1280, 800);
+
+    // Draw the scene in the buffers
+    viewer.core().draw_buffer(
+        viewer.data(), false, R, G, B, A);
+
+    // Save it to a PNG
+    igl::stb::write_image(fileName, R, G, B, A);
+}
+
 
 int main(int argc, char *argv[]) {
     std::ofstream measurementsFile;
@@ -190,8 +206,11 @@ int main(int argc, char *argv[]) {
         constraints.row(i) = V.row(conP(i));
     }
 
+
     std::atomic<bool> redraw(false);
     std::atomic<bool> measure(false);
+
+    //settings
     std::atomic<bool> face(false);
     std::atomic<bool> conjugate(false);
     std::atomic<bool> useBlockFunc(false);
@@ -202,6 +221,10 @@ int main(int argc, char *argv[]) {
     bool changedCons = false;
     std::atomic<bool> onlyGradientDescent(false);
     std::atomic<bool> onlyDistantStep(false);
+    std::atomic<bool> screenshots(false);
+    std::atomic<int> screenshotIt(-1);
+
+    std::vector<int> screenshotIterations = {0, 1, 5, 10, 50, 100, 500, 1000};
     std::mutex m2;
     std::thread optimization_thread(
         [&]() {
@@ -296,6 +319,13 @@ int main(int argc, char *argv[]) {
                         }
                         newCons = false;
                         changedCons = false;
+                        if (screenshots.load(std::memory_order_relaxed)) {
+                            calcNewV(mesh_data);
+                            screenshotIt.store(-2, std::memory_order_relaxed);
+                            redraw.store(true, std::memory_order_relaxed);
+                            //wait for screenshot
+                            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                        }
 
                         if (onlyGradientDescent.load(std::memory_order_relaxed) && !triangleVersion.load(
                                 std::memory_order_relaxed)) {
@@ -346,7 +376,6 @@ int main(int argc, char *argv[]) {
 
                 calcNewV(mesh_data);
                 redraw.store(true, std::memory_order_relaxed);
-                // std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 temp1 = std::chrono::steady_clock::now();
 
 
@@ -376,6 +405,16 @@ int main(int argc, char *argv[]) {
                 Polygons = mesh_data.Planes;
                 temp2 = std::chrono::steady_clock::now();
                 long long distanceTime = std::chrono::duration_cast<std::chrono::nanoseconds>(temp2 - temp1).count();
+                bool doScreenshot = false;
+                if (screenshots.load(std::memory_order_relaxed)) {
+                    if (count(screenshotIterations.begin(), screenshotIterations.end(), i) > 0) {
+                        doScreenshot = true;
+                        screenshotIt.store(2 * i, std::memory_order_relaxed);
+                        redraw.store(true, std::memory_order_relaxed);
+                        //wait for screenshot
+                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                    }
+                }
                 redraw.store(true, std::memory_order_relaxed);
 
                 temp1 = std::chrono::steady_clock::now();
@@ -491,6 +530,13 @@ int main(int argc, char *argv[]) {
                         mesh_data.Planes(k, 3) = dist(j);
                         j++;
                     }
+                }
+
+                if (doScreenshot) {
+                    screenshotIt.store(2 * i + 1, std::memory_order_relaxed);
+                    redraw.store(true, std::memory_order_relaxed);
+                    //wait for screenshot
+                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 }
             }
             TINYAD_DEBUG_OUT("Final energy: " << func.eval(x));
@@ -623,20 +669,8 @@ int main(int argc, char *argv[]) {
         if (key == GLFW_KEY_SPACE) {
             selectMode = !selectMode;
         }
-        //https://github.com/libigl/libigl/blob/f962e4a6b68afe978dc12a63702b7846a3e7a6ed/tutorial/607_ScreenCapture/main.cpp
         if (key == '1') {
-            // Allocate temporary buffers
-            Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> R(1280, 800);
-            Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> G(1280, 800);
-            Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> B(1280, 800);
-            Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> A(1280, 800);
-
-            // Draw the scene in the buffers
-            viewer.core().draw_buffer(
-                viewer.data(), false, R, G, B, A);
-
-            // Save it to a PNG
-            igl::stb::write_image("out.png", R, G, B, A);
+            screenShot(viewer, "out.png");
         }
         if (key == GLFW_KEY_S) {
             measurementsFile.close();
@@ -684,6 +718,16 @@ int main(int argc, char *argv[]) {
             viewer.data().clear_points();
             for (int i = 0; i < constraints.rows(); i++) {
                 viewer.data().add_points(constraints.row(i), Eigen::RowVector3d(1, 0, 0));
+            }
+            if (screenshotIt.load(std::memory_order_relaxed) >= 0) {
+                int iteration = screenshotIt.load(std::memory_order_relaxed) / 2;
+                std::string name = (screenshotIt.load(std::memory_order_relaxed) % 2 == 0)
+                                       ? "distant_step" + std::to_string(iteration)
+                                       : std::to_string(iteration);
+                screenShot(viewer, name + ".png");
+                screenshotIt.store(-1, std::memory_order_relaxed);
+            } else if (screenshotIt.load(std::memory_order_relaxed) == -2) {
+                screenShot(viewer, "handles.png");
             }
             redraw.store(false, std::memory_order_relaxed);
         }
@@ -739,6 +783,11 @@ int main(int argc, char *argv[]) {
         bool triangle_value = triangleVersion.load(std::memory_order_relaxed);
         if (ImGui::Checkbox("Use Triangles", &triangle_value)) {
             triangleVersion.store(triangle_value, std::memory_order_relaxed);
+        }
+
+        bool screenshot_value = screenshots.load(std::memory_order_relaxed);
+        if (ImGui::Checkbox("Take Screenshots", &screenshot_value)) {
+            screenshots.store(screenshot_value, std::memory_order_relaxed);
         }
 
         ImGui::End();
