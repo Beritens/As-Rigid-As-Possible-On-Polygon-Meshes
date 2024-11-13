@@ -53,21 +53,22 @@ data484GD.columns = ['Index', 'Time_ns', 'DistantTime', 'DescentTime', 'Energy']
 data644GD = pd.read_csv('./644GD.csv', header=None, delimiter=",")
 data644GD.columns = ['Index', 'Time_ns', 'DistantTime', 'DescentTime', 'Energy']
 
-gradientDescentTimeMeans = [data36["DescentTime"].mean(), data68["DescentTime"].mean(), data100["DescentTime"].mean(),
+conjugateGradientDescentTimeMeans = [data36["DescentTime"].mean(), data68["DescentTime"].mean(), data100["DescentTime"].mean(),
                  data164["DescentTime"].mean(), data228["DescentTime"].mean(), data356["DescentTime"].mean(),
                  data484["DescentTime"].mean(), data644["DescentTime"].mean()];
 
-conjugateGradientDescentTimeMeans = [data36GD["DescentTime"].mean(), data68GD["DescentTime"].mean(), data100GD["DescentTime"].mean(),
+gradientDescentTimeMeans = [data36GD["DescentTime"].mean(), data68GD["DescentTime"].mean(), data100GD["DescentTime"].mean(),
                  data164GD["DescentTime"].mean(), data228GD["DescentTime"].mean(), data356GD["DescentTime"].mean(),
                  data484GD["DescentTime"].mean(), data644GD["DescentTime"].mean()];
 sizes = [36,68,100,164,228,356,484,644];
 
 plt.figure(figsize=(10, 5))
-plt.plot(sizes, gradientDescentTimeMeans, linestyle='-', color='b', marker='o')
-plt.plot(sizes, conjugateGradientDescentTimeMeans, linestyle='-', color='r', marker='o')
+plt.plot(sizes, gradientDescentTimeMeans, linestyle='-', color='b', marker='o', label='Gradient Descent')
+plt.plot(sizes, conjugateGradientDescentTimeMeans, linestyle='-', color='r', marker='o', label='Conjugate Gradient Descent')
 plt.xlabel('Mesh Vertices')
 plt.ylabel('Time (ns)')
-plt.title('Descent Step vs Global Distance Step')
+plt.title('Gradient Descent vs Conjugate Gradient Descent')
 plt.yscale("log")
+plt.legend()
 plt.grid(False)
 plt.show()

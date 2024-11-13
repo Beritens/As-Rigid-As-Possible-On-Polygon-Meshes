@@ -224,7 +224,7 @@ int main(int argc, char *argv[]) {
     std::atomic<bool> screenshots(false);
     std::atomic<int> screenshotIt(-1);
 
-    std::vector<int> screenshotIterations = {0, 1, 5, 10, 50, 100, 500, 1000};
+    std::vector<int> screenshotIterations = {0, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000};
     std::mutex m2;
     std::thread optimization_thread(
         [&]() {
@@ -274,6 +274,7 @@ int main(int argc, char *argv[]) {
             std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
             std::chrono::steady_clock::time_point temp1 = std::chrono::steady_clock::now();
             std::chrono::steady_clock::time_point temp2 = std::chrono::steady_clock::now();
+            double tempEnergy = 0;
 
             while (true) {
                 {
@@ -379,7 +380,13 @@ int main(int argc, char *argv[]) {
                 temp1 = std::chrono::steady_clock::now();
 
 
+                double distanceStepImprovement = 0;
                 if (!onlyGradientDescent.load(std::memory_order_relaxed)) {
+                    tempEnergy = face.load(std::memory_order_relaxed)
+                                     ? faceFunc.eval(x)
+                                     : (useBlockFunc.load(std::memory_order_relaxed)
+                                            ? funcBlock.eval(x_block)
+                                            : func.eval(x));
                     MatrixXd bc(b.size(), 3);
                     for (int j = 0; j < b.size(); j++) {
                         bc.row(j) = mesh_data.V.row(b(j));
@@ -435,19 +442,22 @@ int main(int argc, char *argv[]) {
                     return mesh_data.Planes.row(v_idx).head(3).normalized();
                 });
 
+
                 if (onlyDistantStep.load(std::memory_order_relaxed)) {
-                    double f = face.load(std::memory_order_relaxed)
-                                   ? faceFunc.eval(x)
-                                   : (useBlockFunc.load(std::memory_order_relaxed)
-                                          ? funcBlock.eval(x_block)
-                                          : func.eval(x));
-                    TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
+                    double afterDistanceStepF = face.load(std::memory_order_relaxed)
+                                                    ? faceFunc.eval(x)
+                                                    : (useBlockFunc.load(std::memory_order_relaxed)
+                                                           ? funcBlock.eval(x_block)
+                                                           : func.eval(x));
+                    TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << afterDistanceStepF);
                     continue;
                 }
 
                 VectorXd d;
                 VectorXd g;
                 double f;
+
+                std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
                 if (conjugate.load(std::memory_order_relaxed)) {
                     Eigen::MatrixXd H_proj;
                     std::tie(f, g, H_proj) = face.load(std::memory_order_relaxed)
@@ -469,18 +479,12 @@ int main(int argc, char *argv[]) {
 
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
 
+                distanceStepImprovement = f - tempEnergy;
+                tempEnergy = f;
+
                 temp2 = std::chrono::steady_clock::now();
                 long long gradientTime = std::chrono::duration_cast<std::chrono::nanoseconds>(temp2 - temp1).count();
                 //measurement
-                if (measure.load(std::memory_order_relaxed)) {
-                    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-                    measurementsFile << i << " , "
-                            << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() << " , "
-                            << distanceTime << " , "
-                            << gradientTime << " , "
-                            << f;
-                    measurementsFile << "\n";
-                }
 
 
                 // std::cout << H_proj << std::endl;
@@ -490,9 +494,24 @@ int main(int argc, char *argv[]) {
                 // }
                 if (useBlockFunc.load(std::memory_order_relaxed)) {
                     x_block = TinyAD::line_search(x_block, d, f, g, funcBlock, 1.0, 0.5, 64);
+                    f = funcBlock.eval(x_block);
                 } else {
                     x = TinyAD::line_search(x, d, f, g, face.load(std::memory_order_relaxed) ? faceFunc : func, 1.0,
                                             0.5, 64);
+                    f = face.load(std::memory_order_relaxed) ? faceFunc.eval(x) : func.eval(x);
+                }
+
+                double descentImprovement = f - tempEnergy;
+
+                if (measure.load(std::memory_order_relaxed)) {
+                    measurementsFile << i << " , "
+                            << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() << " , "
+                            << distanceTime << " , "
+                            << gradientTime << " , "
+                            << f << " , "
+                            << distanceStepImprovement << " , "
+                            << descentImprovement;
+                    measurementsFile << "\n";
                 }
 
 
