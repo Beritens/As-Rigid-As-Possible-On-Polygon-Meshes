@@ -64,10 +64,10 @@ sizes = [36,68,100,164,228,356,484,644];
 
 plt.figure(figsize=(10, 5))
 plt.plot(sizes, gradientDescentTimeMeans, linestyle='-', color='b', marker='o', label='Gradient Descent')
-plt.plot(sizes, conjugateGradientDescentTimeMeans, linestyle='-', color='r', marker='o', label='Conjugate Gradient Descent')
+plt.plot(sizes, conjugateGradientDescentTimeMeans, linestyle='-', color='r', marker='o', label='Newton-like method')
 plt.xlabel('Mesh Vertices')
 plt.ylabel('Time (ns)')
-plt.title('Gradient Descent vs Conjugate Gradient Descent')
+plt.title('Gradient Descent vs Newton-like method')
 plt.yscale("log")
 plt.legend()
 plt.grid(False)

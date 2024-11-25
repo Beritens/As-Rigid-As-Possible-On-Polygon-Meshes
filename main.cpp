@@ -478,6 +478,7 @@ int main(int argc, char *argv[]) {
                 }
 
                 TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
+                double measureF = f;
 
                 distanceStepImprovement = f - tempEnergy;
                 tempEnergy = f;
@@ -508,7 +509,7 @@ int main(int argc, char *argv[]) {
                             << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() << " , "
                             << distanceTime << " , "
                             << gradientTime << " , "
-                            << f << " , "
+                            << measureF << " , "
                             << distanceStepImprovement << " , "
                             << descentImprovement;
                     measurementsFile << "\n";
