@@ -38,11 +38,12 @@ descentTimeMeans = [data36["DescentTime"].mean(), data68["DescentTime"].mean(), 
 sizes = [36,68,100,164,228,356,484,644];
 
 plt.figure(figsize=(10, 5))
-plt.plot(sizes, distTimeMeans, linestyle='-', color='b', marker='o')
-plt.plot(sizes, descentTimeMeans, linestyle='-', color='r', marker='o')
+plt.plot(sizes, distTimeMeans, linestyle='-', color='b', marker='o', label='global distance step')
+plt.plot(sizes, descentTimeMeans, linestyle='-', color='r', marker='o', label='descent step')
 plt.xlabel('Mesh Vertices')
 plt.ylabel('Time (ns)')
 plt.title('Descent Step vs Global Distance Step')
 plt.yscale("log")
+plt.legend()
 plt.grid(False)
 plt.show()

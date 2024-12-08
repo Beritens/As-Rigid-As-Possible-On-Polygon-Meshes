@@ -33,6 +33,10 @@ void insertInL(Eigen::MatrixXd &L, int v1, int v2, double cot) {
     L(b + 2, b + 2) += cot;
 }
 
+double getTriangleArea(Eigen::Vector3d a, Eigen::Vector3d b, Eigen::Vector3d c) {
+    return 0.5 * ((b - a).cross(c - a)).norm();
+}
+
 bool plane_arap_precomputation(
     poly_mesh_data &mesh_data,
     plane_arap_data &data,
@@ -46,9 +50,54 @@ bool plane_arap_precomputation(
     data.cotanWeights.clear();
     data.cotanWeights.resize(mesh_data.originalV.rows());
 
+    std::vector<double> areaRatio;
+
+    for (int i = 0; i < mesh_data.F.size(); i++) {
+        double coveredArea = 0;
+        double fullArea = 0;
+        for (int j = 0; j < mesh_data.F[i].size(); j++) {
+            int next = (j + 1) % mesh_data.F[i].size();
+            int nextnext = (j + 2) % mesh_data.F[i].size();
+            Eigen::Vector3d a = mesh_data.originalV.row(mesh_data.F[i][j]);
+            Eigen::Vector3d b = mesh_data.originalV.row(mesh_data.F[i][next]);
+            Eigen::Vector3d c = mesh_data.originalV.row(mesh_data.F[i][nextnext]);
+            double area = getTriangleArea(a, b, c);
+            coveredArea += 0.5 * area;
+        }
+        for (int j = 0; j < mesh_data.triangles[i].size(); j++) {
+            Eigen::Vector3d a = mesh_data.originalV.row(mesh_data.triangles[i][j][0]);
+            Eigen::Vector3d b = mesh_data.originalV.row(mesh_data.triangles[i][j][1]);
+            Eigen::Vector3d c = mesh_data.originalV.row(mesh_data.triangles[i][j][2]);
+            double area = getTriangleArea(a, b, c);
+            fullArea += area;
+        }
+        areaRatio.push_back(coveredArea / fullArea);
+    }
+
     for (int i = 0; i < mesh_data.originalV.rows(); i++) {
         for (int j = 0; j < mesh_data.VertNeighbors[i].size(); j++) {
             int next = (j + 1) % mesh_data.VertNeighbors[i].size();
+            int faceIdx = -1;
+            for (int face: mesh_data.FaceNeighbors[i]) {
+                int count = 0;
+                for (int l = 0; l < mesh_data.F[face].size(); l++) {
+                    if (mesh_data.F[face][l] == i) {
+                        count++;
+                    }
+
+                    if (mesh_data.F[face][l] == mesh_data.VertNeighbors[i][j]) {
+                        count++;
+                    }
+
+                    if (mesh_data.F[face][l] == mesh_data.VertNeighbors[i][next]) {
+                        count++;
+                    }
+                }
+                if (count >= 3) {
+                    faceIdx = face;
+                    break;
+                }
+            }
             Eigen::Vector3d v_a = mesh_data.originalV.row(i);
             Eigen::Vector3d v_b = mesh_data.originalV.row(mesh_data.VertNeighbors[i][j]);
             Eigen::Vector3d v_c = mesh_data.originalV.row(mesh_data.VertNeighbors[i][next]);
@@ -60,9 +109,12 @@ bool plane_arap_precomputation(
             // data.cotanWeights[i].push_back(1.0);
             // data.cotanWeights[i].push_back(1.0);
 
-            data.cotanWeights[i].push_back(1.0 / tan(angleA));
-            data.cotanWeights[i].push_back(1.0 / tan(angleB));
-            data.cotanWeights[i].push_back(1.0 / tan(angleC));
+            // data.cotanWeights[i].push_back((1.0 / tan(angleA)) / areaRatio[faceIdx]);
+            // data.cotanWeights[i].push_back((1.0 / tan(angleB)) / areaRatio[faceIdx]);
+            // data.cotanWeights[i].push_back((1.0 / tan(angleC)) / areaRatio[faceIdx]);
+            data.cotanWeights[i].push_back((1.0 / tan(angleA)));
+            data.cotanWeights[i].push_back((1.0 / tan(angleB)));
+            data.cotanWeights[i].push_back((1.0 / tan(angleC)));
         }
     }
 

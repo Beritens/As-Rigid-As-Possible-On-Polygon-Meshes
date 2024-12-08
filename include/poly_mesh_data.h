@@ -15,10 +15,12 @@ struct poly_mesh_data {
     Eigen::MatrixXd V;
     Eigen::MatrixXd originalV;
     std::vector<std::vector<int> > F;
+    std::vector<std::vector<int> > nonDualF;
     Eigen::MatrixXi T;
     Eigen::MatrixXd Planes;
     std::vector<std::vector<int> > VertNeighbors;
     std::vector<std::set<int> > FaceNeighbors;
+    std::vector<std::vector<std::vector<int> > > triangles;
 };
 
 template<class T>
@@ -84,7 +86,37 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::
 
 inline void calcNewV(poly_mesh_data &data);
 
+inline std::vector<std::vector<int> > calculateTriangle(std::vector<Eigen::Vector3d> verts, Eigen::Vector3d normal);
+
+inline void calculateOrignialTriangles(poly_mesh_data &mesh_data) {
+    int t = 0;
+    for (int i = 0; i < mesh_data.F.size(); i++) {
+        int size = mesh_data.F[i].size();
+        std::vector<Eigen::Vector3d> verts;
+        for (int j = 0; j < size; j++) {
+            int v_idx = mesh_data.F[i][j];
+            verts.push_back(mesh_data.originalV.row(v_idx));
+        }
+        std::vector<std::vector<int> > triangles = calculateTriangle(verts, mesh_data.Planes.row(i).head(3));
+        std::vector<std::vector<int> > mappedFaceTriangles;
+        for (auto tri: triangles) {
+            std::vector<int> mappedTri;
+            for (int j = 0; j < tri.size(); j++) {
+                if (tri[j] < 0 || tri[j] >= size) {
+                    continue;
+                }
+                mappedTri.push_back(mesh_data.F[i][tri[j]]);
+            }
+            mappedFaceTriangles.push_back(mappedTri);
+        }
+        mesh_data.triangles.push_back(mappedFaceTriangles);
+    }
+}
+
 inline void makeDual(poly_mesh_data &data) {
+    if (data.nonDualF.size() == 0) {
+        data.nonDualF = data.F;
+    }
     Eigen::MatrixXd newV = data.originalV;
     std::set<int> transformedVerts;
     int currentNum = newV.rows();
@@ -247,6 +279,7 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::
     makeDual(data);
     calcNewV(data);
     data.originalV = data.V;
+    calculateOrignialTriangles(data);
 }
 
 inline std::vector<std::vector<int> > calculateTriangle(std::vector<Eigen::Vector3d> verts, Eigen::Vector3d normal) {

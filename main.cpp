@@ -159,7 +159,13 @@ int main(int argc, char *argv[]) {
         }
         polyF.push_back(face);
     }
+    std::chrono::steady_clock::time_point meshPrecomputeTime = std::chrono::steady_clock::now();
     precomputeMesh(polyF);
+
+    std::chrono::steady_clock::time_point meshPrecomputeEndTime = std::chrono::steady_clock::now();
+    long long meshPrecomputeDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        meshPrecomputeEndTime - meshPrecomputeTime).count();
+    std::cout << "mesh precompute: " << meshPrecomputeDuration << std::endl;
 
 
     precompute_poly_mesh(mesh_data, V, polyF);
@@ -241,7 +247,13 @@ int main(int argc, char *argv[]) {
                                    ? igl::ARAP_ENERGY_TYPE_ELEMENTS
                                    : igl::ARAP_ENERGY_TYPE_SPOKES_AND_RIMS;
             face_arap_precomputation(mesh_data, face_arap_data, b);
+
+            std::chrono::steady_clock::time_point arapPrecomputeTime = std::chrono::steady_clock::now();
             plane_arap_precomputation(mesh_data, plane_arap_data, b);
+            std::chrono::steady_clock::time_point arapPrecomputeEndTime = std::chrono::steady_clock::now();
+            long long arapPreComputationDuation = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                arapPrecomputeEndTime - arapPrecomputeTime).count();
+            std::cout << "ARAP precomputation time: " << arapPreComputationDuation << std::endl;
 
 
             calculateTriangles(mesh_data);
