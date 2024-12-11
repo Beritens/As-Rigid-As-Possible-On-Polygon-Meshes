@@ -105,13 +105,6 @@ bool plane_arap_precomputation(
             double angleA = getAngle(v_b - v_a, v_c - v_a);
             double angleB = getAngle(v_a - v_b, v_c - v_b);
             double angleC = getAngle(v_a - v_c, v_b - v_c);
-            // data.cotanWeights[i].push_back(1.0);
-            // data.cotanWeights[i].push_back(1.0);
-            // data.cotanWeights[i].push_back(1.0);
-
-            // data.cotanWeights[i].push_back((1.0 / tan(angleA)) / areaRatio[faceIdx]);
-            // data.cotanWeights[i].push_back((1.0 / tan(angleB)) / areaRatio[faceIdx]);
-            // data.cotanWeights[i].push_back((1.0 / tan(angleC)) / areaRatio[faceIdx]);
             data.cotanWeights[i].push_back((1.0 / tan(angleA)));
             data.cotanWeights[i].push_back((1.0 / tan(angleB)));
             data.cotanWeights[i].push_back((1.0 / tan(angleC)));
@@ -228,7 +221,6 @@ bool global_distance_step(
     plane_arap_data &data) {
     using namespace Eigen;
     using namespace std;
-    // std::this_thread::sleep_for(std::chrono::milliseconds(500));
     const int n = data.V.rows();
     std::vector<Eigen::MatrixXd> invNs;
     std::vector<std::vector<int> > nIdx;
@@ -318,6 +310,8 @@ bool global_distance_step(
 
     b = NInvT * b;
     Eigen::VectorXd newB(b.size() - data.conP.size());
+
+    //delete rows and cols and update b to add constraints
     for (int i = 0; i < b.size(); i++) {
         if (data.distPos[i] < 0) {
             continue;
@@ -329,10 +323,6 @@ bool global_distance_step(
         }
     }
 
-    // for (int j = 0; j < data.conP.size(); j++) {
-    //     int deletedPoly = data.conP[j];
-    //     newB(deletedPoly) = dists[j];
-    // }
 
     int newRows = M.rows() - data.conP.size();
     int newCols = M.cols() - data.conP.size();
@@ -356,18 +346,12 @@ bool global_distance_step(
     }
 
 
-    // Eigen::VectorXd bestDistances = newM.llt().solve(newB);
     Eigen::SimplicialLLT<Eigen::SparseMatrix<double> > solver;
     solver.compute(newM);
     Eigen::VectorXd bestDistances = solver.solve(newB);
 
     for (int i = 0; i < mesh_data.Planes.rows(); i++) {
         bool skipped = data.distPos[i] < 0;
-        // for (int poly = 0; poly < data.conP.size(); poly++) {
-        //     if (data.conP[poly] == i) {
-        //         skipped = true;
-        //     }
-        // }
         if (skipped) {
             continue;
         }
@@ -392,7 +376,8 @@ TinyAD::ScalarFunction<4, double, long long> getFunction(
 
                                   element
                               );
-                              //TODO: einfach constraint berechnung hier rein packen, dann sollte es ja eig. gehen
+
+                              //projection calculation
 
                               Eigen::Index v_idx = element.handle;
                               std::vector<int> localConstrainsIndex;
@@ -453,6 +438,9 @@ TinyAD::ScalarFunction<4, double, long long> getFunction(
                               Eigen::Vector3<T> vert = getPoint<T>(polygons[0], polygons[1], polygons[2]);
                               Eigen::Vector3d ogVert = data.V.row(v_idx);
                               std::vector<Eigen::Vector3<T> > points;
+
+
+                              //simply go over neighbours and sum over triangles
 
                               for (auto neighbor: mesh_data.VertNeighbors[v_idx]) {
                                   std::vector<Eigen::Vector4<T> > neighPolygons;
@@ -632,13 +620,12 @@ TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
 
     func.add_elements<9>(TinyAD::range(data.edges.size()),
                          [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
-                             //calculate arap energy
+                             //not used. tried to sum over edges instead of rotation cells but this was a lot slower
                              using T = TINYAD_SCALAR_TYPE(
 
 
                                  element
                              );
-                             //TODO: einfach constraint berechnung hier rein packen, dann sollte es ja eig. gehen
 
                              Eigen::Index e_idx = element.handle;
                              edge e = data.edges[e_idx];
@@ -718,32 +705,6 @@ TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
                              Eigen::Vector3d ogB = data.V.row(e.b);
 
                              Eigen::Matrix3d Rot = data.R.block<3, 3>(0, e.rot * 3);
-                             // Eigen::MatrixXd V1(points.size() * 3, 3);
-                             // Eigen::MatrixX<T> V2(points.size() * 3, 3);
-                             //
-                             // for (int j = 0; j < size; j++) {
-                             //     int next = (j + 1) % size;
-                             //     int n1 = mesh_data.Hoods[v_idx][j];
-                             //     int n2 = mesh_data.Hoods[v_idx][next];
-                             //     Eigen::Vector3d originalNeighbor = data.V.row(n1);
-                             //     Eigen::Vector3<T> newNeighbor = points[j];
-                             //     Eigen::Vector3d originalNeighbor2 = data.V.row(n2);
-                             //     Eigen::Vector3<T> newNeighbor2 = points[next];
-                             //     V1.row(j * 3) = data.cotanWeights[v_idx][j * 3 + 2] * (ogVert - originalNeighbor);
-                             //     V2.row(j * 3) = data.cotanWeights[v_idx][j * 3 + 2] * (vert - newNeighbor);
-                             //
-                             //     V1.row(j * 3 + 1) =
-                             //             data.cotanWeights[v_idx][j * 3 + 1] * (ogVert - originalNeighbor2);
-                             //     V2.row(j * 3 + 1) = data.cotanWeights[v_idx][j * 3 + 1] * (vert - newNeighbor2);
-                             //
-                             //     V1.row(j * 3 + 2) =
-                             //             data.cotanWeights[v_idx][j * 3] * (originalNeighbor - originalNeighbor2);
-                             //     V2.row(j * 3 + 2) = data.cotanWeights[v_idx][j * 3] * (newNeighbor - newNeighbor2);
-                             // }
-                             //
-                             // Eigen::Matrix3<T> Rot = getRotation<T>(V1, V2);
-
-                             // Eigen::Matrix3d Rot = data.R.block<3, 3>(0, v_idx * 3);
 
                              T returnValue = 0;
                              Eigen::Vector3d v = ogB - ogA;

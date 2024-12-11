@@ -46,17 +46,9 @@ RotationList;
 
 const Eigen::RowVector3d sea_green(70. / 255., 252. / 255., 167. / 255.);
 Eigen::MatrixXd U, Normals;
-Eigen::MatrixXd Polygons;
-Eigen::MatrixXd originalPolygons;
-//Polygons around a vertex
-//center of polygons
-//group used for first method
-//Neighbourhood of Polygon
-//Neighbourhood Verts
 Eigen::MatrixXd Verts;
 Eigen::MatrixXi Ff;
 Eigen::MatrixXd V;
-// Eigen::MatrixXi F;
 Eigen::VectorXi S, b;
 Eigen::RowVector3d mid;
 double anim_t = 0.0;
@@ -79,29 +71,6 @@ void draw_face_mesh(igl::opengl::glfw::Viewer &viewer) {
     viewer.data().compute_normals();
 }
 
-
-void calculateFaceMatrixAndPolygons(std::vector<std::vector<int> > polyF, int face) {
-    Polygons.conservativeResize(Polygons.rows() + 1, 4);
-    Eigen::Vector3d pointa = V.row(polyF[face][0]);
-    Eigen::Vector3d pointb = V.row(polyF[face][1]);
-    Eigen::Vector3d pointc = V.row(polyF[face][2]);
-    Eigen::Vector3d a = pointb - pointa;
-    Eigen::Vector3d b = pointc - pointa;
-    Eigen::Vector3d normal = a.cross(b).normalized();
-    double dist = pointa.dot(normal);
-    Eigen::Vector4d polygon;
-    polygon << normal, dist;
-    std::cout << face << std::endl;
-    Polygons.row(Polygons.rows() - 1) = polygon;
-}
-
-void precomputeMesh(std::vector<std::vector<int> > polyF) {
-    for (int i = 0; i < polyF.size(); i++) {
-        calculateFaceMatrixAndPolygons(polyF, i);
-        // calculateFaceCenters(polyF, i);
-        // calculateHood(polyF, i);
-    }
-}
 
 void screenShot(igl::opengl::glfw::Viewer &viewer, std::string fileName) {
     //https://github.com/libigl/libigl/blob/f962e4a6b68afe978dc12a63702b7846a3e7a6ed/tutorial/607_ScreenCapture/main.cpp
@@ -138,6 +107,8 @@ int main(int argc, char *argv[]) {
     std::vector<std::array<double, 3> > vPos = plyIn.getVertexPositions();
     std::vector<std::vector<size_t> > fInd = plyIn.getFaceIndices<size_t>();
     V.conservativeResize(vPos.size(), 3);
+
+    //convert happly datastructure
     for (int i = 0; i < vPos.size(); i++) {
         V(i, 0) = vPos[i][0];
         V(i, 1) = vPos[i][1];
@@ -159,62 +130,32 @@ int main(int argc, char *argv[]) {
         }
         polyF.push_back(face);
     }
+
+
     std::chrono::steady_clock::time_point meshPrecomputeTime = std::chrono::steady_clock::now();
-    precomputeMesh(polyF);
+
+    //precompute poly mesh: calculate planes and neighbors
+    precompute_poly_mesh(mesh_data, V, polyF);
 
     std::chrono::steady_clock::time_point meshPrecomputeEndTime = std::chrono::steady_clock::now();
     long long meshPrecomputeDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(
         meshPrecomputeEndTime - meshPrecomputeTime).count();
     std::cout << "mesh precompute: " << meshPrecomputeDuration << std::endl;
 
-
-    precompute_poly_mesh(mesh_data, V, polyF);
-    std::cout << "V" << std::endl;
-    std::cout << mesh_data.originalV.rows() << std::endl;
-
-    // std::cout << "F" << std::endl;
-    // for (int i = 0; i < mesh_data.F.size(); i++) {
-    //     for (int j = 0; j < mesh_data.F[i].size(); j++) {
-    //         std::cout << mesh_data.F[i][j] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
     igl::opengl::glfw::Viewer viewer;
     calcNewV(mesh_data);
     draw_face_mesh(viewer);
 
-    Eigen::MatrixXd V1_test(5, 3);
-    Eigen::MatrixXd V2_test(5, 3);
 
-    double theta = 10.0 * M_PI / 180.0;
-    Eigen::Matrix3d rotationMatrix;
-    rotationMatrix << std::cos(theta), -std::sin(theta), 0,
-            std::sin(theta), std::cos(theta), 0,
-            0, 0, 1;
-
-    for (int i = 0; i < 5; i++) {
-        V1_test.row(i) = mesh_data.V.row(i);
-        V2_test.row(i) = rotationMatrix * mesh_data.V.row(i).transpose();
-    }
-
-    Matrix3d rotationTest = getRotation<double>(V1_test, V2_test);
-    std::cout << rotationTest << std::endl;
-    std::cout << rotationMatrix << std::endl;
-
-
-    Eigen::VectorXi conP(0);
+    Eigen::VectorXi con_idx(0);
 
     Eigen::VectorXi tempConP(1);
-    Eigen::MatrixXd lagrangeMultipliers = Eigen::MatrixXd::Zero(conP.size(), 4);
-    Eigen::MatrixXd constraints(conP.size(), 3);
+    Eigen::MatrixXd constraints(con_idx.size(), 3);
     Eigen::MatrixXd tempConstraints;
-    for (int i = 0; i < conP.size(); i++) {
-        constraints.row(i) = V.row(conP(i));
+    for (int i = 0; i < con_idx.size(); i++) {
+        constraints.row(i) = V.row(con_idx(i));
     }
 
-
-    std::atomic<bool> redraw(false);
-    std::atomic<bool> measure(false);
 
     //settings
     std::atomic<bool> face(false);
@@ -227,6 +168,12 @@ int main(int argc, char *argv[]) {
     bool changedCons = false;
     std::atomic<bool> onlyGradientDescent(false);
     std::atomic<bool> onlyDistantStep(false);
+
+
+    //communication between threads
+    std::atomic<bool> redraw(false);
+    std::atomic<bool> measure(false);
+
     std::atomic<bool> screenshots(false);
     std::atomic<int> screenshotIt(-1);
 
@@ -234,13 +181,11 @@ int main(int argc, char *argv[]) {
     std::mutex m2;
     std::thread optimization_thread(
         [&]() {
-            Eigen::MatrixXd originalV = mesh_data.V;
+            //ARAP precomputations
 
-
-            // U = centers;
-            b.conservativeResize(conP.size());
-            for (int i = 0; i < conP.size(); i++) {
-                b(i) = conP(i);
+            b.conservativeResize(con_idx.size());
+            for (int i = 0; i < con_idx.size(); i++) {
+                b(i) = con_idx(i);
             }
 
             arap_data.energy = face.load(std::memory_order_relaxed)
@@ -266,7 +211,6 @@ int main(int argc, char *argv[]) {
 
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
-                // return Polygons.row(v_idx).head(3);
                 return mesh_data.Planes.row(v_idx);
             });
             Eigen::VectorXd x_block = funcBlock.x_from_data([&](int v_idx) {
@@ -281,7 +225,7 @@ int main(int argc, char *argv[]) {
             int i = -1;
 
 
-            //measuring stuff
+            // measuring stuff
 
             std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
             std::chrono::steady_clock::time_point temp1 = std::chrono::steady_clock::now();
@@ -290,22 +234,26 @@ int main(int argc, char *argv[]) {
 
             while (true) {
                 {
+                    // no termination condition: easier to change constraints and settings without restarting the deformation
+                    // in theory: terminate after energy change since last iteration is small enough
                     i++;
                     std::lock_guard<std::mutex> lock(m2);
                     bool switchedEnergy = (triangleVersion.load(std::memory_order_relaxed) && (
                                                arap_data.energy == igl::ARAP_ENERGY_TYPE_ELEMENTS) != face.load(
                                                std::memory_order_relaxed));
                     if (newCons || changedCons || switchedEnergy) {
+                        //precompute again when constraints change or versions changed
+
                         begin = std::chrono::steady_clock::now();
                         i = 0;
                         if (newCons) {
-                            conP.conservativeResize(tempConP.size());
+                            con_idx.conservativeResize(tempConP.size());
                             for (int j = 0; j < tempConP.size(); j++) {
-                                conP(j) = tempConP(j);
+                                con_idx(j) = tempConP(j);
                             }
-                            b.conservativeResize(conP.size());
-                            for (int j = 0; j < conP.size(); j++) {
-                                b(j) = conP(j);
+                            b.conservativeResize(con_idx.size());
+                            for (int j = 0; j < con_idx.size(); j++) {
+                                b(j) = con_idx(j);
                             }
                             // FACE
                             if (triangleVersion.load(std::memory_order_relaxed)) {
@@ -326,8 +274,8 @@ int main(int argc, char *argv[]) {
                                                    : igl::ARAP_ENERGY_TYPE_SPOKES_AND_RIMS;
                             igl::arap_precomputation(mesh_data.originalV, mesh_data.T, 3, b, arap_data);
                         }
-                        constraints.conservativeResize(conP.size(), 3);
-                        for (int j = 0; j < conP.size(); j++) {
+                        constraints.conservativeResize(con_idx.size(), 3);
+                        for (int j = 0; j < con_idx.size(); j++) {
                             constraints.row(j) = tempConstraints.row(j);
                         }
                         newCons = false;
@@ -343,11 +291,12 @@ int main(int argc, char *argv[]) {
                         if (onlyGradientDescent.load(std::memory_order_relaxed) && !triangleVersion.load(
                                 std::memory_order_relaxed)) {
                             if (!noInitalGuess.load(std::memory_order_relaxed)) {
+                                //initial guess
                                 MatrixXd bc(b.size(), 3);
                                 for (int j = 0; j < b.size(); j++) {
                                     bc.row(j) = mesh_data.V.row(b(j));
-                                    for (int k = 0; k < conP.size(); k++) {
-                                        if (conP(k) == b(j)) {
+                                    for (int k = 0; k < con_idx.size(); k++) {
+                                        if (con_idx(k) == b(j)) {
                                             bc.row(j) = constraints.row(k);
                                             break;
                                         }
@@ -366,7 +315,7 @@ int main(int argc, char *argv[]) {
                         }
                     }
                 }
-                if (conP.size() <= 0) {
+                if (con_idx.size() <= 0) {
                     i = 0;
                     continue;
                 }
@@ -375,8 +324,8 @@ int main(int argc, char *argv[]) {
                     MatrixXd bc(b.size(), 3);
                     for (int j = 0; j < b.size(); j++) {
                         bc.row(j) = mesh_data.V.row(b(j));
-                        for (int k = 0; k < conP.size(); k++) {
-                            if (conP(k) == b(j)) {
+                        for (int k = 0; k < con_idx.size(); k++) {
+                            if (con_idx(k) == b(j)) {
                                 bc.row(j) = constraints.row(k);
                                 break;
                             }
@@ -394,6 +343,8 @@ int main(int argc, char *argv[]) {
 
                 double distanceStepImprovement = 0;
                 if (!onlyGradientDescent.load(std::memory_order_relaxed)) {
+                    //global distance step
+
                     tempEnergy = face.load(std::memory_order_relaxed)
                                      ? faceFunc.eval(x)
                                      : (useBlockFunc.load(std::memory_order_relaxed)
@@ -402,8 +353,8 @@ int main(int argc, char *argv[]) {
                     MatrixXd bc(b.size(), 3);
                     for (int j = 0; j < b.size(); j++) {
                         bc.row(j) = mesh_data.V.row(b(j));
-                        for (int k = 0; k < conP.size(); k++) {
-                            if (conP(k) == b(j)) {
+                        for (int k = 0; k < con_idx.size(); k++) {
+                            if (con_idx(k) == b(j)) {
                                 bc.row(j) = constraints.row(k);
                                 break;
                             }
@@ -421,7 +372,6 @@ int main(int argc, char *argv[]) {
 
 
                 calcNewV(mesh_data);
-                Polygons = mesh_data.Planes;
                 temp2 = std::chrono::steady_clock::now();
                 long long distanceTime = std::chrono::duration_cast<std::chrono::nanoseconds>(temp2 - temp1).count();
                 bool doScreenshot = false;
@@ -471,6 +421,7 @@ int main(int argc, char *argv[]) {
 
                 std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
                 if (conjugate.load(std::memory_order_relaxed)) {
+                    //truncated newton
                     Eigen::MatrixXd H_proj;
                     std::tie(f, g, H_proj) = face.load(std::memory_order_relaxed)
                                                  ? faceFunc.eval_with_hessian_proj(x)
@@ -481,6 +432,7 @@ int main(int argc, char *argv[]) {
                         H_proj + 1e-9 * TinyAD::identity<double>(
                             useBlockFunc.load(std::memory_order_relaxed) ? x_block.size() : x.size())).solve(-g);
                 } else {
+                    //gradient descent
                     std::tie(f, g) = face.load(std::memory_order_relaxed)
                                          ? faceFunc.eval_with_gradient(x)
                                          : (useBlockFunc.load(std::memory_order_relaxed)
@@ -500,11 +452,6 @@ int main(int argc, char *argv[]) {
                 //measurement
 
 
-                // std::cout << H_proj << std::endl;
-                // Eigen::VectorXd d = TinyAD::newton_direction(g, H_proj, solver, 1.0);
-                // if (TinyAD::newton_decrement(d, g) < convergence_eps) {
-                //     //break;
-                // }
                 if (useBlockFunc.load(std::memory_order_relaxed)) {
                     x_block = TinyAD::line_search(x_block, d, f, g, funcBlock, 1.0, 0.5, 64);
                     f = funcBlock.eval(x_block);
@@ -517,6 +464,7 @@ int main(int argc, char *argv[]) {
                 double descentImprovement = f - tempEnergy;
 
                 if (measure.load(std::memory_order_relaxed)) {
+                    //write measurements
                     measurementsFile << i << " , "
                             << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() << " , "
                             << distanceTime << " , "
@@ -539,11 +487,11 @@ int main(int argc, char *argv[]) {
                     });
                 }
 
-
-                for (int conIdx = 0; conIdx < conP.size(); conIdx++) {
+                // projection function
+                for (int conIdx = 0; conIdx < con_idx.size(); conIdx++) {
                     Eigen::Vector4d vecs[3];
                     int j = 0;
-                    for (auto k: mesh_data.FaceNeighbors[conP(conIdx)]) {
+                    for (auto k: mesh_data.FaceNeighbors[con_idx(conIdx)]) {
                         vecs[j] = mesh_data.Planes.row(k);
                         j++;
                     }
@@ -558,7 +506,7 @@ int main(int argc, char *argv[]) {
 
                     Eigen::Vector3d dist = normM * constraints.row(conIdx).transpose();
                     j = 0;
-                    for (auto k: mesh_data.FaceNeighbors[conP(conIdx)]) {
+                    for (auto k: mesh_data.FaceNeighbors[con_idx(conIdx)]) {
                         mesh_data.Planes(k, 3) = dist(j);
                         j++;
                     }
@@ -572,11 +520,6 @@ int main(int argc, char *argv[]) {
                 }
             }
             TINYAD_DEBUG_OUT("Final energy: " << func.eval(x));
-            std::cout << Polygons << std::endl;
-
-            // Write final x vector to P matrix.
-            // x_to_data(...) takes a lambda function that writes the final value
-            // of each variable (Eigen::Vector2d) back to our P matrix.
         });
 
 
@@ -619,9 +562,9 @@ int main(int argc, char *argv[]) {
             }
 
             if (selectMode) {
-                tempConP.conservativeResize(conP.size() + 1);
-                for (int i = 0; i < conP.size(); i++) {
-                    tempConP(i) = conP(i);
+                tempConP.conservativeResize(con_idx.size() + 1);
+                for (int i = 0; i < con_idx.size(); i++) {
+                    tempConP(i) = con_idx(i);
                 }
 
                 tempConP(tempConP.size() - 1) = v_idx;
@@ -640,8 +583,8 @@ int main(int argc, char *argv[]) {
                 point_y = mesh_data.V(v_idx, 1);
                 point_z = mesh_data.V(v_idx, 2);
             } else {
-                for (int i = 0; i < conP.size(); i++) {
-                    if (conP(i) == v_idx) {
+                for (int i = 0; i < con_idx.size(); i++) {
+                    if (con_idx(i) == v_idx) {
                         isDragging = true;
                         dragIndex = i;
                         startPoint = constraints.row(i);
@@ -662,6 +605,7 @@ int main(int argc, char *argv[]) {
         }
         return false;
     };
+    //move constraints
     viewer.callback_mouse_move = [&](igl::opengl::glfw::Viewer &viewer, int, int) -> bool {
         double x = viewer.current_mouse_x;
         double y = viewer.core().viewport(3) - viewer.current_mouse_y;
@@ -671,16 +615,17 @@ int main(int argc, char *argv[]) {
             Eigen::Vector4f startPointHom(startPoint(0), startPoint(1), startPoint(2), 1.0f);
             Eigen::Vector4f startPointView = modelView * startPointHom;
             double w = (viewer.core().proj * startPointView)(3);
+            // magic numbers, too lazy to do it properly. But hey, it works
             startPointView(0) = startPointView(0) + (0.8 * w * (x - startX) / viewer.core().viewport(3));
             startPointView(1) = startPointView(1) + (0.8 * w * ((y - startY)) / viewer.core().viewport(3));
             Eigen::Matrix4f modelViewInv = modelView.inverse();
             Eigen::Vector4f backToWorld = modelViewInv * startPointView;
-            tempConstraints.resize(conP.size(), 3);
-            for (int i = 0; i < conP.size(); i++) {
+            tempConstraints.resize(con_idx.size(), 3);
+            for (int i = 0; i < con_idx.size(); i++) {
                 tempConstraints.row(i) = constraints.row(i);
             }
             Eigen::Vector3d newCon = ((backToWorld).head(3) / backToWorld(3)).cast<double>();
-            tempConP = conP;
+            tempConP = con_idx;
             tempConstraints.row(dragIndex) = newCon;
             viewer.data().clear_points();
             for (int i = 0; i < tempConstraints.rows(); i++) {
@@ -694,7 +639,7 @@ int main(int argc, char *argv[]) {
                 changedCons = true;
             }
         }
-        return false; // Returning false lets the viewer process the event normally
+        return false;
     };
 
     viewer.callback_key_pressed = [&](igl::opengl::glfw::Viewer &viewer, unsigned char key, int modifier) -> bool {
@@ -709,21 +654,21 @@ int main(int argc, char *argv[]) {
             measure.store(false, std::memory_order_relaxed);
         }
         if (key == GLFW_KEY_M) {
+            //move last selected constraint (used for experiments)
             measure.store(true, std::memory_order_relaxed);
-            tempConstraints.resize(conP.size(), 3);
-            for (int i = 0; i < conP.size(); i++) {
+            tempConstraints.resize(con_idx.size(), 3);
+            for (int i = 0; i < con_idx.size(); i++) {
                 tempConstraints.row(i) = constraints.row(i);
             }
-            Eigen::Vector3d newCon = tempConstraints.row(conP.size() - 1);
-            // newCon(1) = newCon(1) + 1;
+            Eigen::Vector3d newCon = tempConstraints.row(con_idx.size() - 1);
             newCon(0) = point_x;
             newCon(1) = point_y;
             newCon(2) = point_z;
-            tempConP = conP;
-            tempConstraints.row(conP.size() - 1) = newCon;
+            tempConP = con_idx;
+            tempConstraints.row(con_idx.size() - 1) = newCon;
             viewer.data().clear_points();
             for (int i = 0; i < tempConstraints.rows(); i++) {
-                if (i == conP.size() - 1) {
+                if (i == con_idx.size() - 1) {
                     viewer.data().add_points(tempConstraints.row(i), Eigen::RowVector3d(0, 1, 0));
                     continue;
                 }
@@ -767,7 +712,6 @@ int main(int argc, char *argv[]) {
     };
 
     menu.callback_draw_custom_window = [&]() {
-        // Define next window position + size
         ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling(), 10), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(200, 160), ImGuiCond_FirstUseEver);
         ImGui::Begin(
@@ -775,7 +719,6 @@ int main(int argc, char *argv[]) {
             ImGuiWindowFlags_NoSavedSettings
         );
 
-        // Expose the same variable directly ...
         ImGui::PushItemWidth(-80);
         ImGui::DragScalar("x", ImGuiDataType_Double, &point_x, 0.1, 0, 0, "%.4f");
         ImGui::DragScalar("y", ImGuiDataType_Double, &point_y, 0.1, 0, 0, "%.4f");

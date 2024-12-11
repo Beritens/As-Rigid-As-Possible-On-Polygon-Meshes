@@ -4,7 +4,6 @@
 
 #ifndef HELPER_H
 #define HELPER_H
-#include "TinyAD/Detail/EigenVectorTypedefs.hh"
 
 
 template<class T>
@@ -24,7 +23,6 @@ Eigen::Matrix3<T> getRotationSVD(Eigen::MatrixX<T> v1, Eigen::MatrixX<T> v2) {
     return Rot;
 }
 
-//doesn't seem to work with face arap
 template<class T>
 Eigen::Matrix3<T> getRotation(const Eigen::MatrixX<T> &v1, const Eigen::MatrixX<T> &v2) {
     Eigen::Matrix3<T> S = v2.transpose() * v1;
@@ -35,7 +33,8 @@ Eigen::Matrix3<T> getRotation(const Eigen::MatrixX<T> &v1, const Eigen::MatrixX<
     }
 
     if (std::abs(Rot.determinant() - 1) > 1e-6 || Rot.hasNaN() || !Rot.allFinite()) {
-        return getRotationSVD(v1,v2);
+        //fallback to svd if polar decomposition doesn't work
+        return getRotationSVD(v1, v2);
     }
 
     return Rot;
@@ -44,4 +43,4 @@ Eigen::Matrix3<T> getRotation(const Eigen::MatrixX<T> &v1, const Eigen::MatrixX<
 inline double getAngle(Eigen::Vector3d a, Eigen::Vector3d b) {
     return acos(a.dot(b) / (a.norm() * b.norm()));
 }
-#endif //HELPER_H
+#endif
