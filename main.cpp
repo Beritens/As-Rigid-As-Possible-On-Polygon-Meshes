@@ -39,7 +39,6 @@
 
 #define M_PI           3.14159265358979323846
 
-
 typedef
 std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond> >
 RotationList;
@@ -207,7 +206,8 @@ int main(int argc, char *argv[]) {
 
             auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
             auto faceFunc = getFaceFunction(constraints, mesh_data, face_arap_data);
-            auto func = getFunction(constraints, mesh_data, plane_arap_data);
+            // auto func = getFunction(constraints, mesh_data, plane_arap_data);
+            auto func = getEdgeFunction(constraints, mesh_data, plane_arap_data);
 
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
