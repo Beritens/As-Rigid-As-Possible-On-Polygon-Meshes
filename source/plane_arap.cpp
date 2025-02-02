@@ -49,6 +49,7 @@ bool plane_arap_precomputation(
 
     data.cotanWeights.clear();
     data.lagrangeMultipliers.clear();
+    data.higherDegreeConstraints.clear();
     data.cotanWeights.resize(mesh_data.originalV.rows());
 
     std::vector<double> areaRatio;
@@ -183,6 +184,16 @@ bool plane_arap_precomputation(
 
             // invNs[i].push_back(NInvCon);
             nis.push_back(idxCon);
+            bool constrained = false;
+            for (int b_idx = 0; b_idx < data.b.size(); b_idx++) {
+                if (data.b(b_idx) == i) {
+                    constrained = true;
+                    break;
+                }
+            }
+            if (constrained) {
+                continue;
+            }
             if (c > 0) {
                 data.lagrangeMultipliers.push_back(0.0);
                 data.lagrangeMultipliers.push_back(0.0);
@@ -253,6 +264,7 @@ bool global_distance_step(
     plane_arap_data &data) {
     using namespace Eigen;
     using namespace std;
+
     const int n = data.V.rows();
     // std::vector<Eigen::MatrixXd> invNs;
     // std::vector<std::vector<int> > nIdx;
@@ -270,6 +282,18 @@ bool global_distance_step(
         nIdx.push_back(nis);
         int constraint_count = (polygons.size() - 1) / 3 + 1;
         for (int c = 0; c < constraint_count; c++) {
+            if (c > 0) {
+                bool constrained = false;
+                for (int b_idx = 0; b_idx < data.b.size(); b_idx++) {
+                    if (data.b(b_idx) == i) {
+                        constrained = true;
+                        break;
+                    }
+                }
+                if (constrained) {
+                    continue;
+                }
+            }
             MatrixXd NCon(3, 3);
             std::vector<int> idxCon;
             for (int j = c * 3; j < c * 3 + 3; j++) {
@@ -308,26 +332,28 @@ bool global_distance_step(
     std::vector<double> dists;
 
     for (int i = 0; i < data.b.size(); i++) {
-        Eigen::Vector4d vecs[3];
+        std::vector<Eigen::Vector4d> vecs;
         int j = 0;
         for (auto k: mesh_data.FaceNeighbors[data.b(i)]) {
-            vecs[j] = mesh_data.Planes.row(k);
+            vecs.push_back(mesh_data.Planes.row(k));
             j++;
         }
-        Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
-        Eigen::Vector3d normal2 = vecs[1].head(3).normalized();
-        Eigen::Vector3d normal3 = vecs[2].head(3).normalized();
-
-        Eigen::Matrix3d m;
-        m.row(0) = normal1;
-        m.row(1) = normal2;
-        m.row(2) = normal3;
-
-        Eigen::Vector3d dist = m * bc.row(i).transpose();
+        //
+        // Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
+        // Eigen::Vector3d normal2 = vecs[1].head(3).normalized();
+        // Eigen::Vector3d normal3 = vecs[2].head(3).normalized();
+        //
+        // Eigen::Matrix3d m;
+        // m.row(0) = normal1;
+        // m.row(1) = normal2;
+        // m.row(2) = normal3;
+        //
+        // Eigen::Vector3d dist = m * bc.row(i).transpose();
         j = 0;
         for (auto k: mesh_data.FaceNeighbors[data.b(i)]) {
-            dists.push_back(dist(j));
-            mesh_data.Planes(k, 3) = dist(j);
+            double dist = vecs[j].head(3).normalized().dot(bc.row(i));
+            dists.push_back(dist);
+            mesh_data.Planes(k, 3) = dist;
             j++;
         }
     }
@@ -365,6 +391,8 @@ bool global_distance_step(
         //go over all constraints
         for (int c = 1; c < nIdx[i].size(); c++) {
             //go over dimensions
+            // std::cout << invNs[i][0] << std::endl;
+            // std::cout << invNs[i][c] << std::endl;
             for (int d = 0; d < 3; d++) {
                 //go over data
                 std::map<int, double> values;
@@ -372,8 +400,6 @@ bool global_distance_step(
                     // mTriplets.emplace_back(newRows + extra_rows + d, nIdx[i][0][nor], invNs[i][0](d, nor));
                     values[nIdx[i][0][nor]] += invNs[i][0](d, nor);
                     values[nIdx[i][c][nor]] -= invNs[i][c](d, nor);
-                    // mTriplets.emplace_back(newRows + extra_rows + d, nIdx[i][c][nor], -invNs[i][c](d, nor));
-                    // mTriplets.emplace_back(newRows + extra_rows + d, nIdx[i][c][nor], -invNs[i][c](d, nor));
                 }
 
                 for (const auto &[key, value]: values) {
@@ -458,8 +484,16 @@ bool global_distance_step(
     // Eigen::SimplicialLLT<Eigen::SparseMatrix<double> > solver;
     // solver.compute(newM);
     // Eigen::VectorXd bestDistances = solver.solve(newB);
-    Eigen::BiCGSTAB<Eigen::SparseMatrix<double> > solver;
+    // Eigen::BiCGSTAB<Eigen::SparseMatrix<double> > solver;
+    // solver.compute(newM);
+    // solver.setMaxIterations(100000);
+    // Eigen::VectorXd bestDistances = solver.solve(newB);
+    Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int> > solver;
     solver.compute(newM);
+    if (solver.info() != Eigen::Success) {
+        std::cout << "decomposition failed" << std::endl;
+        return false;
+    }
     Eigen::VectorXd bestDistances = solver.solve(newB);
     // std::cout << bestDistances << std::endl;
 
@@ -473,7 +507,7 @@ bool global_distance_step(
     }
 
     for (int i = 0; i < extra_rows; i++) {
-        data.lagrangeMultipliers[i] = bestDistances[newRows + i];
+        data.lagrangeMultipliers[i] = bestDistances[b.size() - data.conP.size() + i];
     }
 
     return true;
@@ -735,150 +769,151 @@ TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
     plane_arap_data &data) {
     TinyAD::ScalarFunction<4, double, long long> func = TinyAD::scalar_function<4>(TinyAD::range(data.Polygons.rows()));
 
-    func.add_elements<6>(TinyAD::range(data.higherDegreeConstraints.size()),
-                         [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
-                             using T = TINYAD_SCALAR_TYPE(
-                                 element
-                             );
+    func.add_elements<10>(TinyAD::range(data.higherDegreeConstraints.size()),
+                          [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
+                              using T = TINYAD_SCALAR_TYPE(
+                                  element
+                              );
 
-                             Eigen::Index e_idx = element.handle;
+                              Eigen::Index e_idx = element.handle;
 
-                             std::vector<int> point_a = data.higherDegreeConstraints[e_idx][0];
-                             std::vector<int> point_b = data.higherDegreeConstraints[e_idx][1];
-
-                             //won't work with constrains for now (should be handled in precomputation)
-                             Eigen::Vector3<T> a = getPoint<T>(element.variables(point_a[0]),
-                                                               element.variables(point_a[1]),
-                                                               element.variables(point_a[2]));
-
-                             Eigen::Vector3<T> b = getPoint<T>(element.variables(point_b[0]),
-                                                               element.variables(point_b[1]),
-                                                               element.variables(point_b[2]));
-
-                             return data.lagrangeMultipliers[e_idx * 3] * (a(0) - b(0)) +
-                                    data.lagrangeMultipliers[e_idx * 3 + 1] * (a(1) - b(1)) +
-                                    data.lagrangeMultipliers[e_idx * 3 + 2] * (a(2) - b(2));
-                         });
-
-    func.add_elements<6>(TinyAD::range(data.edges.size()),
-                         [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
-                             //not used. tried to sum over edges instead of rotation cells but this was a lot slower
-                             using T = TINYAD_SCALAR_TYPE(
-                                 element
-                             );
-
-                             Eigen::Index e_idx = element.handle;
-                             edge e = data.edges[e_idx];
-                             std::vector<Eigen::Vector3d> localConstrains;
-                             std::vector<int> localConstrainsIndex;
-                             std::vector<Eigen::Vector3<T> > localConstraintsNormals;
+                              std::vector<int> point_a = data.higherDegreeConstraints[e_idx][0];
+                              std::vector<int> point_b = data.higherDegreeConstraints[e_idx][1];
 
 
-                             std::vector<int> neighborsA = mesh_data.FaceNeighbors[e.a];
-                             std::vector<int> neighborsB = mesh_data.FaceNeighbors[e.b];
+                              //won't work with constrains for now (should be handled in precomputation)
+                              Eigen::Vector3<T> a = getPoint<T>(element.variables(point_a[0]),
+                                                                element.variables(point_a[1]),
+                                                                element.variables(point_a[2]));
 
-                             std::vector<int> faces;
-                             faces.reserve(6); // Reserve space for efficiency
+                              Eigen::Vector3<T> b = getPoint<T>(element.variables(point_b[0]),
+                                                                element.variables(point_b[1]),
+                                                                element.variables(point_b[2]));
 
-                             for (size_t i = 0; i < std::min<size_t>(3, neighborsA.size()); ++i) {
-                                 faces.push_back(neighborsA[i]);
-                             }
+                              return 1000000000000.0 * (a(0) - b(0)) * (a(0) - b(0)) +
+                                     1000000000000.0 * (a(1) - b(1)) * (a(1) - b(1)) +
+                                     1000000000000.0 * (a(2) - b(2)) * (a(2) - b(2));
+                          });
 
-                             for (size_t i = 0; i < std::min<size_t>(3, neighborsB.size()); ++i) {
-                                 faces.push_back(neighborsB[i]);
-                             }
+    func.add_elements<10>(TinyAD::range(data.edges.size()),
+                          [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
+                              //not used. tried to sum over edges instead of rotation cells but this was a lot slower
+                              using T = TINYAD_SCALAR_TYPE(
+                                  element
+                              );
 
-                             std::sort(faces.begin(), faces.end());
-                             faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
+                              Eigen::Index e_idx = element.handle;
+                              edge e = data.edges[e_idx];
+                              std::vector<Eigen::Vector3d> localConstrains;
+                              std::vector<int> localConstrainsIndex;
+                              std::vector<Eigen::Vector3<T> > localConstraintsNormals;
 
-                             for (int i = 0; i < data.b.size(); i++) {
-                                 // if (e.a == data.b(i) || e.b == data.b(i)) {
-                                 //     localConstrains.push_back(bc.row(i));
-                                 // }
-                                 for (auto p: faces) {
-                                     int size = mesh_data.F[i].size();
-                                     for (int fi = 0; fi < size; fi++) {
-                                         if (mesh_data.F[p][fi] == data.b(i)) {
-                                             localConstrains.push_back(bc.row(i));
-                                             localConstrainsIndex.push_back(p);
-                                             localConstraintsNormals.push_back(
-                                                 element.variables(p).head(3).normalized());
-                                         }
-                                     }
-                                 }
-                             }
 
-                             std::map<int, Eigen::Vector4<T> > gons;
-                             for (int i = 0; i < localConstrains.size(); i++) {
-                                 Eigen::Vector3<T> normal = localConstraintsNormals[i];
-                                 Eigen::Vector3d point = localConstrains[i];
-                                 T distance = normal.dot(point);
-                                 int index = localConstrainsIndex[i];
+                              std::vector<int> neighborsA = mesh_data.FaceNeighbors[e.a];
+                              std::vector<int> neighborsB = mesh_data.FaceNeighbors[e.b];
 
-                                 Eigen::Vector4<T> pol(normal(0), normal(1), normal(2), distance);
-                                 gons[index] = pol;
-                             }
-                             // for (int i = 0; i < localConstrainsIndex.size(); i++) {
-                             //     Eigen::Vector4<T> vecs[3];
-                             //     int j = 0;
-                             //     for (auto k: mesh_data.FaceNeighbors[data.b(localConstrainsIndex[i])]) {
-                             //         vecs[j] = element.variables(k);
-                             //         j++;
-                             //     }
-                             //     Eigen::Vector3<T> normal1 = vecs[0].head(3).normalized();
-                             //     Eigen::Vector3<T> normal2 = vecs[1].head(3).normalized();
-                             //     Eigen::Vector3<T> normal3 = vecs[2].head(3).normalized();
-                             //
-                             //     Eigen::Matrix3<T> m;
-                             //     m.row(0) = normal1;
-                             //     m.row(1) = normal2;
-                             //     m.row(2) = normal3;
-                             //
-                             //     Eigen::Vector3<T> dist =
-                             //             m * bc.row(localConstrainsIndex[i]).transpose();
-                             //     j = 0;
-                             //     for (auto k: mesh_data.FaceNeighbors[data.b(localConstrainsIndex[i])]) {
-                             //         Eigen::Vector4<T> pol = element.variables(k);
-                             //         pol(3) = dist(j);
-                             //         gons[k] = pol;
-                             //         j++;
-                             //     }
-                             // }
+                              std::vector<int> faces;
+                              faces.reserve(6); // Reserve space for efficiency
 
-                             std::vector<Eigen::Vector4<T> > polygons;
-                             for (auto f: mesh_data.FaceNeighbors[e.a]) {
-                                 Eigen::Vector4<T> pol;
-                                 if (gons.find(f) != gons.end()) {
-                                     pol = gons[f];
-                                 } else {
-                                     pol = element.variables(f);
-                                 }
-                                 polygons.push_back(pol);
-                             }
-                             Eigen::Vector3<T> a = getPoint<T>(polygons[0], polygons[1], polygons[2]);
-                             Eigen::Vector3d ogA = data.V.row(e.a);
+                              for (size_t i = 0; i < std::min<size_t>(3, neighborsA.size()); ++i) {
+                                  faces.push_back(neighborsA[i]);
+                              }
 
-                             polygons.clear();
-                             for (auto f: mesh_data.FaceNeighbors[e.b]) {
-                                 Eigen::Vector4<T> pol;
-                                 if (gons.find(f) != gons.end()) {
-                                     pol = gons[f];
-                                 } else {
-                                     pol = element.variables(f);
-                                 }
-                                 polygons.push_back(pol);
-                             }
-                             Eigen::Vector3<T> b = getPoint<T>(polygons[0], polygons[1], polygons[2]);
-                             Eigen::Vector3d ogB = data.V.row(e.b);
+                              for (size_t i = 0; i < std::min<size_t>(3, neighborsB.size()); ++i) {
+                                  faces.push_back(neighborsB[i]);
+                              }
 
-                             Eigen::Matrix3d Rot = data.R.block<3, 3>(0, e.rot * 3);
+                              std::sort(faces.begin(), faces.end());
+                              faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
 
-                             T returnValue = 0;
-                             Eigen::Vector3d v = ogB - ogA;
-                             Eigen::Vector3<T> tv = b - a;
+                              for (int i = 0; i < data.b.size(); i++) {
+                                  // if (e.a == data.b(i) || e.b == data.b(i)) {
+                                  //     localConstrains.push_back(bc.row(i));
+                                  // }
+                                  for (auto p: faces) {
+                                      int size = mesh_data.F[p].size();
+                                      for (int fi = 0; fi < size; fi++) {
+                                          if (mesh_data.F[p][fi] == data.b(i)) {
+                                              localConstrains.push_back(bc.row(i));
+                                              localConstrainsIndex.push_back(p);
+                                              localConstraintsNormals.push_back(
+                                                  element.variables(p).head(3).normalized());
+                                          }
+                                      }
+                                  }
+                              }
 
-                             returnValue += e.w * (tv - Rot * v).squaredNorm();
-                             return returnValue;
-                         });
+                              std::map<int, Eigen::Vector4<T> > gons;
+                              for (int i = 0; i < localConstrains.size(); i++) {
+                                  Eigen::Vector3<T> normal = localConstraintsNormals[i];
+                                  Eigen::Vector3d point = localConstrains[i];
+                                  T distance = normal.dot(point);
+                                  int index = localConstrainsIndex[i];
+
+                                  Eigen::Vector4<T> pol(normal(0), normal(1), normal(2), distance);
+                                  gons[index] = pol;
+                              }
+                              // for (int i = 0; i < localConstrainsIndex.size(); i++) {
+                              //     Eigen::Vector4<T> vecs[3];
+                              //     int j = 0;
+                              //     for (auto k: mesh_data.FaceNeighbors[data.b(localConstrainsIndex[i])]) {
+                              //         vecs[j] = element.variables(k);
+                              //         j++;
+                              //     }
+                              //     Eigen::Vector3<T> normal1 = vecs[0].head(3).normalized();
+                              //     Eigen::Vector3<T> normal2 = vecs[1].head(3).normalized();
+                              //     Eigen::Vector3<T> normal3 = vecs[2].head(3).normalized();
+                              //
+                              //     Eigen::Matrix3<T> m;
+                              //     m.row(0) = normal1;
+                              //     m.row(1) = normal2;
+                              //     m.row(2) = normal3;
+                              //
+                              //     Eigen::Vector3<T> dist =
+                              //             m * bc.row(localConstrainsIndex[i]).transpose();
+                              //     j = 0;
+                              //     for (auto k: mesh_data.FaceNeighbors[data.b(localConstrainsIndex[i])]) {
+                              //         Eigen::Vector4<T> pol = element.variables(k);
+                              //         pol(3) = dist(j);
+                              //         gons[k] = pol;
+                              //         j++;
+                              //     }
+                              // }
+
+                              std::vector<Eigen::Vector4<T> > polygons;
+                              for (auto f: mesh_data.FaceNeighbors[e.a]) {
+                                  Eigen::Vector4<T> pol;
+                                  if (gons.find(f) != gons.end()) {
+                                      pol = gons[f];
+                                  } else {
+                                      pol = element.variables(f);
+                                  }
+                                  polygons.push_back(pol);
+                              }
+                              Eigen::Vector3<T> a = getPoint<T>(polygons[0], polygons[1], polygons[2]);
+                              Eigen::Vector3d ogA = data.V.row(e.a);
+
+                              polygons.clear();
+                              for (auto f: mesh_data.FaceNeighbors[e.b]) {
+                                  Eigen::Vector4<T> pol;
+                                  if (gons.find(f) != gons.end()) {
+                                      pol = gons[f];
+                                  } else {
+                                      pol = element.variables(f);
+                                  }
+                                  polygons.push_back(pol);
+                              }
+                              Eigen::Vector3<T> b = getPoint<T>(polygons[0], polygons[1], polygons[2]);
+                              Eigen::Vector3d ogB = data.V.row(e.b);
+
+                              Eigen::Matrix3d Rot = data.R.block<3, 3>(0, e.rot * 3);
+
+                              T returnValue = 0;
+                              Eigen::Vector3d v = ogB - ogA;
+                              Eigen::Vector3<T> tv = b - a;
+
+                              returnValue += e.w * (tv - Rot * v).squaredNorm();
+                              return returnValue;
+                          });
     return func;
 }

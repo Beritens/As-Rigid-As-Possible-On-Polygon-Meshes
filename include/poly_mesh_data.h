@@ -63,7 +63,7 @@ inline void calculatePolygons(poly_mesh_data &data) {
         data.Planes.conservativeResize(data.Planes.rows() + 1, 4);
         Eigen::Vector3d pointa = data.V.row(data.F[i][0]);
         Eigen::Vector3d normal = Eigen::Vector3d::Zero();
-        for (int j = 1; j < size; j++) {
+        for (int j = 1; j < size - 1; j++) {
             int k = ((j) % (size - 1)) + 1;
             Eigen::Vector3d pointb = data.V.row(data.F[i][j]);
             Eigen::Vector3d pointc = data.V.row(data.F[i][k]);

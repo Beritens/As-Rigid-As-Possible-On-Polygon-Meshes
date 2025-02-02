@@ -114,6 +114,10 @@ int main(int argc, char *argv[]) {
         V(i, 2) = vPos[i][2];
     }
 
+    std::cout << "get vertices" << std::endl;
+    std::cout << V << std::endl;
+    std::cout << "that's it" << std::endl;
+
     int Fcols = 0;
     for (int i = 0; i < fInd.size(); i++) {
         if (fInd[i].size() > Fcols) {
