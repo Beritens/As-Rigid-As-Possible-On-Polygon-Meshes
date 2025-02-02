@@ -276,7 +276,8 @@ bool global_face_distance_step(
 
 
     for (int i = 0; i < mesh_data.originalV.rows(); i++) {
-        std::set<int> polygons = mesh_data.FaceNeighbors[i];
+        std::set<int> polygons(mesh_data.FaceNeighbors[i].begin(), mesh_data.FaceNeighbors[i].end());
+
         MatrixXd N(polygons.size(), 3);
         std::vector<int> idx;
         int j = 0;

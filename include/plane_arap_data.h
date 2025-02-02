@@ -22,6 +22,9 @@ struct plane_arap_data {
     std::vector<int> distPos;
     std::vector<std::vector<double> > cotanWeights;
     std::vector<int> conP;
+    std::vector<double> lagrangeMultipliers;
+    //list with pairs "veriteces" with their corresponding planes
+    std::vector<std::vector<std::vector<int> > > higherDegreeConstraints;
 };
 
 #endif //PLANE_ARAP_DATA_H

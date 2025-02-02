@@ -48,6 +48,7 @@ bool plane_arap_precomputation(
 
 
     data.cotanWeights.clear();
+    data.lagrangeMultipliers.clear();
     data.cotanWeights.resize(mesh_data.originalV.rows());
 
     std::vector<double> areaRatio;
@@ -162,6 +163,37 @@ bool plane_arap_precomputation(
         index++;
     }
 
+    for (int i = 0; i < data.V.rows(); i++) {
+        std::vector<int> polygons = mesh_data.FaceNeighbors[i];
+
+        std::vector<Eigen::MatrixXd> ns;
+        std::vector<std::vector<int> > nis;
+        // nIdx.push_back(nis);
+        int constraint_count = (polygons.size() - 1) / 3 + 1;
+        for (int c = 0; c < constraint_count; c++) {
+            // MatrixXd NCon(3, 3);
+            std::vector<int> idxCon;
+            for (int j = c * 3; j < c * 3 + 3; j++) {
+                int sj = j % polygons.size();
+                int pol = polygons[sj];
+                // NCon.row(j - c * 3) = mesh_data.Planes.row(pol).head(3).normalized();
+                idxCon.push_back(pol);
+            }
+            // Eigen::MatrixXd NInvCon = NCon.inverse();
+
+            // invNs[i].push_back(NInvCon);
+            nis.push_back(idxCon);
+            if (c > 0) {
+                data.lagrangeMultipliers.push_back(0.0);
+                data.lagrangeMultipliers.push_back(0.0);
+                data.lagrangeMultipliers.push_back(0.0);
+                std::vector<int> pointa = nis[0];
+                std::vector<int> pointb = nis[c];
+                std::vector<std::vector<int> > higherDegreeStuff = {pointa, pointb};
+                data.higherDegreeConstraints.push_back(higherDegreeStuff);
+            }
+        }
+    }
 
     return true;
 }
@@ -222,25 +254,35 @@ bool global_distance_step(
     using namespace Eigen;
     using namespace std;
     const int n = data.V.rows();
-    std::vector<Eigen::MatrixXd> invNs;
-    std::vector<std::vector<int> > nIdx;
+    // std::vector<Eigen::MatrixXd> invNs;
+    // std::vector<std::vector<int> > nIdx;
+
+    std::vector<std::vector<Eigen::MatrixXd> > invNs;
+    std::vector<std::vector<std::vector<int> > > nIdx;
 
 
     for (int i = 0; i < data.V.rows(); i++) {
-        std::set<int> polygons = mesh_data.FaceNeighbors[i];
-        MatrixXd N(polygons.size(), 3);
-        std::vector<int> idx;
-        int j = 0;
-        for (auto pol: polygons) {
-            N.row(j) = mesh_data.Planes.row(pol).head(3).normalized();
-            idx.push_back(pol);
+        std::vector<int> polygons = mesh_data.FaceNeighbors[i];
 
-            j++;
+        std::vector<Eigen::MatrixXd> ns;
+        invNs.push_back(ns);
+        std::vector<std::vector<int> > nis;
+        nIdx.push_back(nis);
+        int constraint_count = (polygons.size() - 1) / 3 + 1;
+        for (int c = 0; c < constraint_count; c++) {
+            MatrixXd NCon(3, 3);
+            std::vector<int> idxCon;
+            for (int j = c * 3; j < c * 3 + 3; j++) {
+                int sj = j % polygons.size();
+                int pol = polygons[sj];
+                NCon.row(j - c * 3) = mesh_data.Planes.row(pol).head(3).normalized();
+                idxCon.push_back(pol);
+            }
+            Eigen::MatrixXd NInvCon = NCon.inverse();
+
+            invNs[i].push_back(NInvCon);
+            nIdx[i].push_back(idxCon);
         }
-        Eigen::MatrixXd NInv = N.inverse();
-
-        invNs.push_back(NInv);
-        nIdx.push_back(idx);
     }
 
     int rows = data.V.rows() * 3;
@@ -248,10 +290,12 @@ bool global_distance_step(
     Eigen::SparseMatrix<double> NInv(rows, cols);
     std::vector<Eigen::Triplet<double> > triplets;
 
+    //go over all vertices
     for (int i = 0; i < nIdx.size(); i++) {
+        //go over 3 dimensions
         for (int j = 0; j < 3; j++) {
-            for (int k = 0; k < nIdx[i].size(); k++) {
-                triplets.emplace_back(i * 3 + j, nIdx[i][k], invNs[i](j, k));
+            for (int k = 0; k < nIdx[i][0].size(); k++) {
+                triplets.emplace_back(i * 3 + j, nIdx[i][0][k], invNs[i][0](j, k));
                 // NInv(i * 3 + j, nIdx[i][k]) += invNs[i](j, k);
             }
         }
@@ -309,8 +353,75 @@ bool global_distance_step(
     }
 
     b = NInvT * b;
-    Eigen::VectorXd newB(b.size() - data.conP.size());
 
+
+    std::vector<Eigen::Triplet<double> > lagrangeTriplets;
+
+    int extra_rows = 0;
+    // higher vertex degree stuff
+
+    //go over all vertices
+    for (int i = 0; i < nIdx.size(); i++) {
+        //go over all constraints
+        for (int c = 1; c < nIdx[i].size(); c++) {
+            //go over dimensions
+            for (int d = 0; d < 3; d++) {
+                //go over data
+                std::map<int, double> values;
+                for (int nor = 0; nor < 3; nor++) {
+                    // mTriplets.emplace_back(newRows + extra_rows + d, nIdx[i][0][nor], invNs[i][0](d, nor));
+                    values[nIdx[i][0][nor]] += invNs[i][0](d, nor);
+                    values[nIdx[i][c][nor]] -= invNs[i][c](d, nor);
+                    // mTriplets.emplace_back(newRows + extra_rows + d, nIdx[i][c][nor], -invNs[i][c](d, nor));
+                    // mTriplets.emplace_back(newRows + extra_rows + d, nIdx[i][c][nor], -invNs[i][c](d, nor));
+                }
+
+                for (const auto &[key, value]: values) {
+                    lagrangeTriplets.emplace_back(extra_rows, key, value);
+
+                    // lagrangeTriplets.emplace_back(key, newRows + extra_rows, value);
+                }
+                extra_rows++;
+            }
+        }
+    }
+
+    Eigen::SparseMatrix<double> lagrangeM(extra_rows, M.rows());
+    lagrangeM.setFromTriplets(lagrangeTriplets.begin(), lagrangeTriplets.end());
+
+    Eigen::SparseMatrix<double> lagrangeT = lagrangeM.transpose();
+
+    Eigen::MatrixXd combinedMatrix = Eigen::MatrixXd::Zero(M.rows() + lagrangeM.rows(), M.cols() + lagrangeM.rows());
+
+    combinedMatrix.topLeftCorner(M.rows(), M.cols()) = M;
+    combinedMatrix.topRightCorner(M.rows(), lagrangeT.cols()) = lagrangeT;
+    combinedMatrix.bottomLeftCorner(lagrangeM.rows(), M.cols()) = lagrangeM;
+
+    //triplets later used for the final matrix
+    std::vector<Eigen::Triplet<double> > mTriplets;
+
+
+    int newRows = combinedMatrix.rows() - data.conP.size();
+    int newCols = combinedMatrix.cols() - data.conP.size();
+
+
+    for (int i = 0; i < combinedMatrix.rows(); ++i) {
+        for (int j = 0; j < combinedMatrix.cols(); ++j) {
+            double value = combinedMatrix(i, j);
+            int row = i >= data.distPos.size()
+                          ? i - data.conP.size()
+                          : data.distPos[i];
+            int col = j >= data.distPos.size()
+                          ? j - data.conP.size()
+                          : data.distPos[j];
+            if (row >= 0 && col >= 0) {
+                mTriplets.emplace_back(row, col, value);
+            }
+        }
+    }
+
+
+    Eigen::VectorXd newB(b.size() - data.conP.size() + extra_rows);
     //delete rows and cols and update b to add constraints
     for (int i = 0; i < b.size(); i++) {
         if (data.distPos[i] < 0) {
@@ -319,25 +430,21 @@ bool global_distance_step(
         newB(data.distPos[i]) = b(i);
         for (int j = 0; j < data.conP.size(); j++) {
             int deletedIndex = data.conP[j];
-            newB(data.distPos[i]) -= M.coeff(i, deletedIndex) * dists[j];
+            newB(data.distPos[i]) -= combinedMatrix.coeff(i, deletedIndex) * dists[j];
+        }
+    }
+    for (int i = 0; i < extra_rows; i++) {
+        int old_index = b.size() + i;
+        int new_index = b.size() - data.conP.size() + i;
+        newB(new_index) = 0.0;
+        for (int j = 0; j < data.conP.size(); j++) {
+            int deletedIndex = data.conP[j];
+            newB(new_index) -= combinedMatrix.coeff(old_index, deletedIndex) * dists[j];
         }
     }
 
 
-    int newRows = M.rows() - data.conP.size();
-    int newCols = M.cols() - data.conP.size();
     Eigen::SparseMatrix<double> newM(newRows, newCols);
-    std::vector<Eigen::Triplet<double> > mTriplets;
-    for (int i = 0; i < M.outerSize(); ++i) {
-        for (Eigen::SparseMatrix<double>::InnerIterator it(M, i); it; ++it) {
-            int row = it.row();
-            int col = it.col();
-            double value = it.value();
-            if (data.distPos[row] >= 0 && data.distPos[col] >= 0) {
-                mTriplets.emplace_back(data.distPos[row], data.distPos[col], value);
-            }
-        }
-    }
     newM.setFromTriplets(mTriplets.begin(), mTriplets.end());
 
     //constraints cover whole mesh
@@ -345,10 +452,16 @@ bool global_distance_step(
         return true;
     }
 
+    // std::cout << newM << std::endl;
+    // std::cout << newB << std::endl;
 
-    Eigen::SimplicialLLT<Eigen::SparseMatrix<double> > solver;
+    // Eigen::SimplicialLLT<Eigen::SparseMatrix<double> > solver;
+    // solver.compute(newM);
+    // Eigen::VectorXd bestDistances = solver.solve(newB);
+    Eigen::BiCGSTAB<Eigen::SparseMatrix<double> > solver;
     solver.compute(newM);
     Eigen::VectorXd bestDistances = solver.solve(newB);
+    // std::cout << bestDistances << std::endl;
 
     for (int i = 0; i < mesh_data.Planes.rows(); i++) {
         bool skipped = data.distPos[i] < 0;
@@ -357,6 +470,10 @@ bool global_distance_step(
         }
 
         mesh_data.Planes(i, 3) = bestDistances(data.distPos[i]);
+    }
+
+    for (int i = 0; i < extra_rows; i++) {
+        data.lagrangeMultipliers[i] = bestDistances[newRows + i];
     }
 
     return true;
@@ -618,7 +735,32 @@ TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
     plane_arap_data &data) {
     TinyAD::ScalarFunction<4, double, long long> func = TinyAD::scalar_function<4>(TinyAD::range(data.Polygons.rows()));
 
-    func.add_elements<9>(TinyAD::range(data.edges.size()),
+    func.add_elements<6>(TinyAD::range(data.higherDegreeConstraints.size()),
+                         [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
+                             using T = TINYAD_SCALAR_TYPE(
+                                 element
+                             );
+
+                             Eigen::Index e_idx = element.handle;
+
+                             std::vector<int> point_a = data.higherDegreeConstraints[e_idx][0];
+                             std::vector<int> point_b = data.higherDegreeConstraints[e_idx][1];
+
+                             //won't work with constrains for now (should be handled in precomputation)
+                             Eigen::Vector3<T> a = getPoint<T>(element.variables(point_a[0]),
+                                                               element.variables(point_a[1]),
+                                                               element.variables(point_a[2]));
+
+                             Eigen::Vector3<T> b = getPoint<T>(element.variables(point_b[0]),
+                                                               element.variables(point_b[1]),
+                                                               element.variables(point_b[2]));
+
+                             return data.lagrangeMultipliers[e_idx * 3] * (a(0) - b(0)) +
+                                    data.lagrangeMultipliers[e_idx * 3 + 1] * (a(1) - b(1)) +
+                                    data.lagrangeMultipliers[e_idx * 3 + 2] * (a(2) - b(2));
+                         });
+
+    func.add_elements<6>(TinyAD::range(data.edges.size()),
                          [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
                              //not used. tried to sum over edges instead of rotation cells but this was a lot slower
                              using T = TINYAD_SCALAR_TYPE(
@@ -632,11 +774,23 @@ TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
                              std::vector<Eigen::Vector3<T> > localConstraintsNormals;
 
 
-                             std::set<int> faces;
-                             std::set_union(mesh_data.FaceNeighbors[e.a].begin(), mesh_data.FaceNeighbors[e.a].end(),
-                                            mesh_data.FaceNeighbors[e.b].begin(), mesh_data.FaceNeighbors[e.b].end(),
-                                            std::inserter(faces, faces.begin()));
-                             // faces.insert(mesh_data.VertPolygons[e.b].begin(), mesh_data.VertPolygons[e.b].end());
+                             std::vector<int> neighborsA = mesh_data.FaceNeighbors[e.a];
+                             std::vector<int> neighborsB = mesh_data.FaceNeighbors[e.b];
+
+                             std::vector<int> faces;
+                             faces.reserve(6); // Reserve space for efficiency
+
+                             for (size_t i = 0; i < std::min<size_t>(3, neighborsA.size()); ++i) {
+                                 faces.push_back(neighborsA[i]);
+                             }
+
+                             for (size_t i = 0; i < std::min<size_t>(3, neighborsB.size()); ++i) {
+                                 faces.push_back(neighborsB[i]);
+                             }
+
+                             std::sort(faces.begin(), faces.end());
+                             faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
+
                              for (int i = 0; i < data.b.size(); i++) {
                                  // if (e.a == data.b(i) || e.b == data.b(i)) {
                                  //     localConstrains.push_back(bc.row(i));
@@ -661,8 +815,7 @@ TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
                                  T distance = normal.dot(point);
                                  int index = localConstrainsIndex[i];
 
-                                 Eigen::Vector4<T> pol = element.variables(index);
-                                 pol(3) = distance;
+                                 Eigen::Vector4<T> pol(normal(0), normal(1), normal(2), distance);
                                  gons[index] = pol;
                              }
                              // for (int i = 0; i < localConstrainsIndex.size(); i++) {

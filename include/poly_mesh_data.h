@@ -19,7 +19,7 @@ struct poly_mesh_data {
     Eigen::MatrixXi T;
     Eigen::MatrixXd Planes;
     std::vector<std::vector<int> > VertNeighbors;
-    std::vector<std::set<int> > FaceNeighbors;
+    std::vector<std::vector<int> > FaceNeighbors;
     std::vector<std::vector<std::vector<int> > > triangles;
 };
 
@@ -113,86 +113,86 @@ inline void calculateOrignialTriangles(poly_mesh_data &mesh_data) {
     }
 }
 
-inline void makeDual(poly_mesh_data &data) {
-    if (data.nonDualF.size() == 0) {
-        data.nonDualF = data.F;
-    }
-    Eigen::MatrixXd newV = data.originalV;
-    std::set<int> transformedVerts;
-    int currentNum = newV.rows();
-    std::vector<std::vector<int> > newF = data.F;
-    bool mustRecompute = false;
-    for (int i = 0; i < data.originalV.rows(); i++) {
-        if (data.VertNeighbors[i].size() <= 3) {
-            continue;
-        }
-        bool skip = false;
-        for (int j: data.VertNeighbors[i]) {
-            if (transformedVerts.find(j) != transformedVerts.end()) {
-                skip = true;
-            }
-            if (j >= currentNum) {
-                //neighbour is already a new vert. Do this next iteration (too lazy to correctly set neighbors)
-                skip = true;
-            }
-        }
-        if (skip) {
-            continue;
-        }
-        mustRecompute = true;
-        std::map<int, int> verts;
-        verts[data.VertNeighbors[i][0]] = i;
-        std::vector<int> newFace;
-        newFace.push_back(i);
-        for (int j = 1; j < data.VertNeighbors[i].size(); j++) {
-            newV.conservativeResize(newV.rows() + 1, 3);
-            newV.row(newV.rows() - 1) = 0.999 * newV.row(i) + 0.001 * newV.row(data.VertNeighbors[i][j]);
-            verts[data.VertNeighbors[i][j]] = newV.rows() - 1;
-            newFace.push_back(newV.rows() - 1);
-        }
-        newV.row(i) = 0.999 * newV.row(i) + 0.001 * newV.row(data.VertNeighbors[i][0]);
-        newF.push_back(newFace);
-        transformedVerts.insert(i);
-        for (auto f_idx: data.FaceNeighbors[i]) {
-            int size = newF[f_idx].size();
-            for (int j = 0; j < size; j++) {
-                int next = (j + 1) % size;
-                if (newF[f_idx][next] == i) {
-                    int v1 = newF[f_idx][j];
-                    int v2 = newF[f_idx][(next + 1) % size];
-                    int n1 = verts[newF[f_idx][j]];
-                    int n2 = verts[newF[f_idx][(next + 1) % size]];
-                    newF[f_idx][next] = n1;
-                    newF[f_idx].insert(newF[f_idx].begin() + next + 1, n2);
-
-                    //v1 or v2 could also be verts with more than 3 neightsbours, adjust neighbourhood
-                    if (v1 < data.VertNeighbors.size()) {
-                        for (int k = 0; k < data.VertNeighbors[v1].size(); k++) {
-                            if (data.VertNeighbors[v1][k] == i) {
-                                data.VertNeighbors[v1][k] = n1;
-                                break;
-                            }
-                        }
-                    }
-                    if (v2 < data.VertNeighbors.size()) {
-                        for (int k = 0; k < data.VertNeighbors[v2].size(); k++) {
-                            if (data.VertNeighbors[v2][k] == i) {
-                                data.VertNeighbors[v2][k] = n2;
-                                break;
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-    }
-    if (mustRecompute) {
-        precompute_poly_mesh(data, newV, newF);
-        calcNewV(data);
-        data.originalV = data.V;
-    }
-}
+// inline void makeDual(poly_mesh_data &data) {
+//     if (data.nonDualF.size() == 0) {
+//         data.nonDualF = data.F;
+//     }
+//     Eigen::MatrixXd newV = data.originalV;
+//     std::set<int> transformedVerts;
+//     int currentNum = newV.rows();
+//     std::vector<std::vector<int> > newF = data.F;
+//     bool mustRecompute = false;
+//     for (int i = 0; i < data.originalV.rows(); i++) {
+//         if (data.VertNeighbors[i].size() <= 3) {
+//             continue;
+//         }
+//         bool skip = false;
+//         for (int j: data.VertNeighbors[i]) {
+//             if (transformedVerts.find(j) != transformedVerts.end()) {
+//                 skip = true;
+//             }
+//             if (j >= currentNum) {
+//                 //neighbour is already a new vert. Do this next iteration (too lazy to correctly set neighbors)
+//                 skip = true;
+//             }
+//         }
+//         if (skip) {
+//             continue;
+//         }
+//         mustRecompute = true;
+//         std::map<int, int> verts;
+//         verts[data.VertNeighbors[i][0]] = i;
+//         std::vector<int> newFace;
+//         newFace.push_back(i);
+//         for (int j = 1; j < data.VertNeighbors[i].size(); j++) {
+//             newV.conservativeResize(newV.rows() + 1, 3);
+//             newV.row(newV.rows() - 1) = 0.999 * newV.row(i) + 0.001 * newV.row(data.VertNeighbors[i][j]);
+//             verts[data.VertNeighbors[i][j]] = newV.rows() - 1;
+//             newFace.push_back(newV.rows() - 1);
+//         }
+//         newV.row(i) = 0.999 * newV.row(i) + 0.001 * newV.row(data.VertNeighbors[i][0]);
+//         newF.push_back(newFace);
+//         transformedVerts.insert(i);
+//         for (auto f_idx: data.FaceNeighbors[i]) {
+//             int size = newF[f_idx].size();
+//             for (int j = 0; j < size; j++) {
+//                 int next = (j + 1) % size;
+//                 if (newF[f_idx][next] == i) {
+//                     int v1 = newF[f_idx][j];
+//                     int v2 = newF[f_idx][(next + 1) % size];
+//                     int n1 = verts[newF[f_idx][j]];
+//                     int n2 = verts[newF[f_idx][(next + 1) % size]];
+//                     newF[f_idx][next] = n1;
+//                     newF[f_idx].insert(newF[f_idx].begin() + next + 1, n2);
+//
+//                     //v1 or v2 could also be verts with more than 3 neightsbours, adjust neighbourhood
+//                     if (v1 < data.VertNeighbors.size()) {
+//                         for (int k = 0; k < data.VertNeighbors[v1].size(); k++) {
+//                             if (data.VertNeighbors[v1][k] == i) {
+//                                 data.VertNeighbors[v1][k] = n1;
+//                                 break;
+//                             }
+//                         }
+//                     }
+//                     if (v2 < data.VertNeighbors.size()) {
+//                         for (int k = 0; k < data.VertNeighbors[v2].size(); k++) {
+//                             if (data.VertNeighbors[v2][k] == i) {
+//                                 data.VertNeighbors[v2][k] = n2;
+//                                 break;
+//                             }
+//                         }
+//                     }
+//                     break;
+//                 }
+//             }
+//         }
+//     }
+//     if (mustRecompute) {
+//         precompute_poly_mesh(data, newV, newF);
+//         calcNewV(data);
+//         data.originalV = data.V;
+//     }
+// }
 
 inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::vector<std::vector<int> > &F) {
     data.V = V;
@@ -214,7 +214,7 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::
             const int k = (j + 1) % size;
             tempHoods[F[i][j]].insert(F[i][k]);
             tempHoods[F[i][k]].insert(F[i][j]);
-            data.FaceNeighbors[F[i][j]].insert(i);
+            data.FaceNeighbors[F[i][j]].push_back(i);
         }
     }
     data.T = Eigen::MatrixXi::Zero(triangleCount, 3);
@@ -276,7 +276,7 @@ inline void precompute_poly_mesh(poly_mesh_data &data, Eigen::MatrixXd &V, std::
             }
         }
     }
-    makeDual(data);
+    // makeDual(data);
     calcNewV(data);
     data.originalV = data.V;
     calculateOrignialTriangles(data);

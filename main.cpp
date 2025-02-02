@@ -190,7 +190,7 @@ int main(int argc, char *argv[]) {
             arap_data.energy = face.load(std::memory_order_relaxed)
                                    ? igl::ARAP_ENERGY_TYPE_ELEMENTS
                                    : igl::ARAP_ENERGY_TYPE_SPOKES_AND_RIMS;
-            face_arap_precomputation(mesh_data, face_arap_data, b);
+            // face_arap_precomputation(mesh_data, face_arap_data, b);
 
             std::chrono::steady_clock::time_point arapPrecomputeTime = std::chrono::steady_clock::now();
             plane_arap_precomputation(mesh_data, plane_arap_data, b);
@@ -201,21 +201,21 @@ int main(int argc, char *argv[]) {
 
 
             calculateTriangles(mesh_data);
-            igl::arap_precomputation(mesh_data.V, mesh_data.T, 3, b, arap_data);
+            // igl::arap_precomputation(mesh_data.V, mesh_data.T, 3, b, arap_data);
 
 
-            auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
-            auto faceFunc = getFaceFunction(constraints, mesh_data, face_arap_data);
-            // auto func = getFunction(constraints, mesh_data, plane_arap_data);
             auto func = getEdgeFunction(constraints, mesh_data, plane_arap_data);
+            // auto faceFunc = getFaceFunction(constraints, mesh_data, face_arap_data);
+            // auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
+            // auto func = getFunction(constraints, mesh_data, plane_arap_data);
 
 
             Eigen::VectorXd x = func.x_from_data([&](int v_idx) {
                 return mesh_data.Planes.row(v_idx);
             });
-            Eigen::VectorXd x_block = funcBlock.x_from_data([&](int v_idx) {
-                return mesh_data.Planes.row(v_idx).head(3);
-            });
+            // Eigen::VectorXd x_block = funcBlock.x_from_data([&](int v_idx) {
+            //     return mesh_data.Planes.row(v_idx).head(3);
+            // });
             // Projected Newton
 
             TinyAD::LinearSolver solver;
@@ -263,7 +263,7 @@ int main(int argc, char *argv[]) {
                                 igl::arap_precomputation(mesh_data.originalV, mesh_data.T, 3, b, arap_data);
                             } else {
                                 if (face.load(std::memory_order_relaxed)) {
-                                    face_arap_precomputation(mesh_data, face_arap_data, b);
+                                    // face_arap_precomputation(mesh_data, face_arap_data, b);
                                 } else {
                                     plane_arap_precomputation(mesh_data, plane_arap_data, b);
                                 }
@@ -305,8 +305,8 @@ int main(int argc, char *argv[]) {
                                 calcNewV(mesh_data);
                                 //FACE
                                 if (face.load(std::memory_order_relaxed)) {
-                                    getFaceRotations(mesh_data, face_arap_data);
-                                    global_face_distance_step(bc, mesh_data, face_arap_data);
+                                    // getFaceRotations(mesh_data, face_arap_data);
+                                    // global_face_distance_step(bc, mesh_data, face_arap_data);
                                 } else {
                                     getRotations(mesh_data, plane_arap_data);
                                     global_distance_step(bc, mesh_data, plane_arap_data);
@@ -345,11 +345,12 @@ int main(int argc, char *argv[]) {
                 if (!onlyGradientDescent.load(std::memory_order_relaxed)) {
                     //global distance step
 
-                    tempEnergy = face.load(std::memory_order_relaxed)
-                                     ? faceFunc.eval(x)
-                                     : (useBlockFunc.load(std::memory_order_relaxed)
-                                            ? funcBlock.eval(x_block)
-                                            : func.eval(x));
+                    tempEnergy = func.eval(x);
+                    // tempEnergy = face.load(std::memory_order_relaxed)
+                    //                  ? faceFunc.eval(x)
+                    //                  : (useBlockFunc.load(std::memory_order_relaxed)
+                    //                         ? funcBlock.eval(x_block)
+                    //                         : func.eval(x));
                     MatrixXd bc(b.size(), 3);
                     for (int j = 0; j < b.size(); j++) {
                         bc.row(j) = mesh_data.V.row(b(j));
@@ -361,13 +362,13 @@ int main(int argc, char *argv[]) {
                         }
                     }
                     //FACE
-                    if (face.load(std::memory_order_relaxed)) {
-                        getFaceRotations(mesh_data, face_arap_data);
-                        global_face_distance_step(bc, mesh_data, face_arap_data);
-                    } else {
-                        getRotations(mesh_data, plane_arap_data);
-                        global_distance_step(bc, mesh_data, plane_arap_data);
-                    }
+                    // if (face.load(std::memory_order_relaxed)) {
+                    //     // getFaceRotations(mesh_data, face_arap_data);
+                    //     // global_face_distance_step(bc, mesh_data, face_arap_data);
+                    // } else {
+                    getRotations(mesh_data, plane_arap_data);
+                    global_distance_step(bc, mesh_data, plane_arap_data);
+                    // }
                 }
 
 
@@ -388,11 +389,11 @@ int main(int argc, char *argv[]) {
 
                 temp1 = std::chrono::steady_clock::now();
 
-                if (face.load(std::memory_order_relaxed)) {
-                    getFaceRotations(mesh_data, face_arap_data);
-                } else {
-                    getRotations(mesh_data, plane_arap_data);
-                }
+                // if (face.load(std::memory_order_relaxed)) {
+                //     getFaceRotations(mesh_data, face_arap_data);
+                // } else {
+                getRotations(mesh_data, plane_arap_data);
+                // }
 
 
                 // getRotations(mesh_data, plane_arap_data);
@@ -400,17 +401,18 @@ int main(int argc, char *argv[]) {
                     return mesh_data.Planes.row(v_idx);
                 });
 
-                x_block = funcBlock.x_from_data([&](int v_idx) {
-                    return mesh_data.Planes.row(v_idx).head(3).normalized();
-                });
+                // x_block = funcBlock.x_from_data([&](int v_idx) {
+                //     return mesh_data.Planes.row(v_idx).head(3).normalized();
+                // });
 
 
                 if (onlyDistantStep.load(std::memory_order_relaxed)) {
-                    double afterDistanceStepF = face.load(std::memory_order_relaxed)
-                                                    ? faceFunc.eval(x)
-                                                    : (useBlockFunc.load(std::memory_order_relaxed)
-                                                           ? funcBlock.eval(x_block)
-                                                           : func.eval(x));
+                    double afterDistanceStepF = func.eval(x);
+                    // double afterDistanceStepF = face.load(std::memory_order_relaxed)
+                    //                                 ? faceFunc.eval(x)
+                    //                                 : (useBlockFunc.load(std::memory_order_relaxed)
+                    //                                        ? funcBlock.eval(x_block)
+                    //                                        : func.eval(x));
                     TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << afterDistanceStepF);
                     continue;
                 }
@@ -423,21 +425,25 @@ int main(int argc, char *argv[]) {
                 if (conjugate.load(std::memory_order_relaxed)) {
                     //truncated newton
                     Eigen::MatrixXd H_proj;
-                    std::tie(f, g, H_proj) = face.load(std::memory_order_relaxed)
-                                                 ? faceFunc.eval_with_hessian_proj(x)
-                                                 : (useBlockFunc.load(std::memory_order_relaxed)
-                                                        ? funcBlock.eval_with_hessian_proj(x_block)
-                                                        : func.eval_with_hessian_proj(x));
+                    std::tie(f, g, H_proj) = func.eval_with_hessian_proj(x);
+                    // std::tie(f, g, H_proj) = face.load(std::memory_order_relaxed)
+                    //                              ? faceFunc.eval_with_hessian_proj(x)
+                    //                              : (useBlockFunc.load(std::memory_order_relaxed)
+                    //                                     ? funcBlock.eval_with_hessian_proj(x_block)
+                    //                                     : func.eval_with_hessian_proj(x));
                     d = cg_solver.compute(
-                        H_proj + 1e-9 * TinyAD::identity<double>(
-                            useBlockFunc.load(std::memory_order_relaxed) ? x_block.size() : x.size())).solve(-g);
+                        H_proj + 1e-9 * TinyAD::identity<double>(x.size())).solve(-g);
+                    // d = cg_solver.compute(
+                    //     H_proj + 1e-9 * TinyAD::identity<double>(
+                    //         useBlockFunc.load(std::memory_order_relaxed) ? x_block.size() : x.size())).solve(-g);
                 } else {
                     //gradient descent
-                    std::tie(f, g) = face.load(std::memory_order_relaxed)
-                                         ? faceFunc.eval_with_gradient(x)
-                                         : (useBlockFunc.load(std::memory_order_relaxed)
-                                                ? funcBlock.eval_with_gradient(x_block)
-                                                : func.eval_with_gradient(x));
+                    std::tie(f, g) = func.eval_with_gradient(x);
+                    // std::tie(f, g) = face.load(std::memory_order_relaxed)
+                    //                      ? faceFunc.eval_with_gradient(x)
+                    //                      : (useBlockFunc.load(std::memory_order_relaxed)
+                    //                             ? funcBlock.eval_with_gradient(x_block)
+                    //                             : func.eval_with_gradient(x));
                     d = -g * 0.03;
                 }
 
@@ -451,15 +457,17 @@ int main(int argc, char *argv[]) {
                 long long gradientTime = std::chrono::duration_cast<std::chrono::nanoseconds>(temp2 - temp1).count();
                 //measurement
 
-
-                if (useBlockFunc.load(std::memory_order_relaxed)) {
-                    x_block = TinyAD::line_search(x_block, d, f, g, funcBlock, 1.0, 0.5, 64);
-                    f = funcBlock.eval(x_block);
-                } else {
-                    x = TinyAD::line_search(x, d, f, g, face.load(std::memory_order_relaxed) ? faceFunc : func, 1.0,
-                                            0.5, 64);
-                    f = face.load(std::memory_order_relaxed) ? faceFunc.eval(x) : func.eval(x);
-                }
+                //
+                // if (useBlockFunc.load(std::memory_order_relaxed)) {
+                //     x_block = TinyAD::line_search(x_block, d, f, g, funcBlock, 1.0, 0.5, 64);
+                //     f = funcBlock.eval(x_block);
+                // } else {
+                x = TinyAD::line_search(x, d, f, g, func, 1.0,
+                                        0.5, 64);
+                // x = TinyAD::line_search(x, d, f, g, face.load(std::memory_order_relaxed) ? faceFunc : func, 1.0,
+                //                         0.5, 64);
+                f = func.eval(x);
+                // }
 
                 double descentImprovement = f - tempEnergy;
 
@@ -476,16 +484,16 @@ int main(int argc, char *argv[]) {
                 }
 
 
-                if (useBlockFunc.load(std::memory_order_relaxed)) {
-                    funcBlock.x_to_data(x_block, [&](int v_idx, const Eigen::VectorXd &p) {
-                        mesh_data.Planes.row(v_idx).head(3) = p.normalized();
-                    });
-                } else {
-                    func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
-                        mesh_data.Planes.row(v_idx) = p;
-                        mesh_data.Planes.row(v_idx).head(3) = mesh_data.Planes.row(v_idx).head(3).normalized();
-                    });
-                }
+                // if (useBlockFunc.load(std::memory_order_relaxed)) {
+                //     funcBlock.x_to_data(x_block, [&](int v_idx, const Eigen::VectorXd &p) {
+                //         mesh_data.Planes.row(v_idx).head(3) = p.normalized();
+                //     });
+                // } else {
+                func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
+                    mesh_data.Planes.row(v_idx) = p;
+                    mesh_data.Planes.row(v_idx).head(3) = mesh_data.Planes.row(v_idx).head(3).normalized();
+                });
+                // }
 
                 // projection function
                 for (int conIdx = 0; conIdx < con_idx.size(); conIdx++) {
