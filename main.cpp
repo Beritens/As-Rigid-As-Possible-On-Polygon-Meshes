@@ -270,6 +270,7 @@ int main(int argc, char *argv[]) {
                                     // face_arap_precomputation(mesh_data, face_arap_data, b);
                                 } else {
                                     plane_arap_precomputation(mesh_data, plane_arap_data, b);
+                                    func = getEdgeFunction(constraints, mesh_data, plane_arap_data);
                                 }
                             }
                         } else if (switchedEnergy) {
@@ -501,25 +502,25 @@ int main(int argc, char *argv[]) {
 
                 // projection function
                 for (int conIdx = 0; conIdx < con_idx.size(); conIdx++) {
-                    Eigen::Vector4d vecs[3];
+                    std::vector<Eigen::Vector4d> vecs;
                     int j = 0;
                     for (auto k: mesh_data.FaceNeighbors[con_idx(conIdx)]) {
-                        vecs[j] = mesh_data.Planes.row(k);
+                        vecs.push_back(mesh_data.Planes.row(k));
                         j++;
                     }
-                    Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
-                    Eigen::Vector3d normal2 = vecs[1].head(3).normalized();
-                    Eigen::Vector3d normal3 = vecs[2].head(3).normalized();
-
-                    Eigen::Matrix3d normM;
-                    normM.row(0) = normal1;
-                    normM.row(1) = normal2;
-                    normM.row(2) = normal3;
-
-                    Eigen::Vector3d dist = normM * constraints.row(conIdx).transpose();
+                    // Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
+                    // Eigen::Vector3d normal2 = vecs[1].head(3).normalized();
+                    // Eigen::Vector3d normal3 = vecs[2].head(3).normalized();
+                    //
+                    // Eigen::Matrix3d normM;
+                    // normM.row(0) = normal1;
+                    // normM.row(1) = normal2;
+                    // normM.row(2) = normal3;
+                    //
+                    // Eigen::Vector3d dist = normM * constraints.row(conIdx).transpose();
                     j = 0;
                     for (auto k: mesh_data.FaceNeighbors[con_idx(conIdx)]) {
-                        mesh_data.Planes(k, 3) = dist(j);
+                        mesh_data.Planes(k, 3) = vecs[j].head(3).normalized().dot(constraints.row(conIdx));
                         j++;
                     }
                 }
