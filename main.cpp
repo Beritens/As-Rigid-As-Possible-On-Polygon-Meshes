@@ -270,7 +270,7 @@ int main(int argc, char *argv[]) {
                                     // face_arap_precomputation(mesh_data, face_arap_data, b);
                                 } else {
                                     plane_arap_precomputation(mesh_data, plane_arap_data, b);
-                                    func = getEdgeFunction(constraints, mesh_data, plane_arap_data);
+                                    // func = getEdgeFunction(constraints, mesh_data, plane_arap_data);
                                 }
                             }
                         } else if (switchedEnergy) {
@@ -468,7 +468,7 @@ int main(int argc, char *argv[]) {
                 //     f = funcBlock.eval(x_block);
                 // } else {
                 x = TinyAD::line_search(x, d, f, g, func, 1.0,
-                                        0.5, 64);
+                                        0.5, 20);
                 // x = TinyAD::line_search(x, d, f, g, face.load(std::memory_order_relaxed) ? faceFunc : func, 1.0,
                 //                         0.5, 64);
                 f = func.eval(x);
