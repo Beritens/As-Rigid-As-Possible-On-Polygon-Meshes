@@ -205,12 +205,12 @@ int main(int argc, char *argv[]) {
 
 
             calculateTriangles(mesh_data);
-            // igl::arap_precomputation(mesh_data.V, mesh_data.T, 3, b, arap_data);
 
 
             auto func = getEdgeFunction(constraints, mesh_data, plane_arap_data);
 
             std::vector<TinyAD::ScalarFunction<4, double, long long> > constraintFunctions;
+
             // auto faceFunc = getFaceFunction(constraints, mesh_data, face_arap_data);
             // auto funcBlock = getBlockFunction(constraints, mesh_data, plane_arap_data);
             // auto func = getFunction(constraints, mesh_data, plane_arap_data);
@@ -278,7 +278,7 @@ int main(int argc, char *argv[]) {
                                     // face_arap_precomputation(mesh_data, face_arap_data, b);
                                 } else {
                                     plane_arap_precomputation(mesh_data, plane_arap_data, b);
-                                    func = getEdgeFunction(constraints, mesh_data, plane_arap_data);
+                                    // func = getEdgeFunction(constraints, mesh_data, plane_arap_data);
                                     constraintFunctions.clear();
                                     for (int l_id = 0; l_id < plane_arap_data.extra_grad_planes.size(); l_id++) {
                                         constraintFunctions.push_back(
@@ -391,7 +391,11 @@ int main(int argc, char *argv[]) {
                 }
 
 
+                std::cout << "after distance step???" << std::endl;
+
                 calcNewV(mesh_data);
+
+                std::cout << "1???" << std::endl;
 
                 temp2 = std::chrono::steady_clock::now();
                 long long distanceTime = std::chrono::duration_cast<std::chrono::nanoseconds>(temp2 - temp1).count();
@@ -405,6 +409,8 @@ int main(int argc, char *argv[]) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(500));
                     }
                 }
+
+                std::cout << "2???" << std::endl;
                 redraw.store(true, std::memory_order_relaxed);
 
                 temp1 = std::chrono::steady_clock::now();
@@ -416,6 +422,7 @@ int main(int argc, char *argv[]) {
                 // }
 
 
+                std::cout << "3???" << std::endl;
                 // getRotations(mesh_data, plane_arap_data);
                 x = func.x_from_data([&](int v_idx)-> Eigen::Vector4d {
                     if (v_idx < mesh_data.Planes.rows()) {
@@ -431,6 +438,7 @@ int main(int argc, char *argv[]) {
                 //     return mesh_data.Planes.row(v_idx).head(3).normalized();
                 // });
 
+                std::cout << "4???" << std::endl;
 
                 if (onlyDistantStep.load(std::memory_order_relaxed)) {
                     double afterDistanceStepF = func.eval(x);
@@ -451,13 +459,16 @@ int main(int argc, char *argv[]) {
                 if (conjugate.load(std::memory_order_relaxed)) {
                     //truncated newton
                     Eigen::MatrixXd H_proj;
+                    std::cout << "hm" << std::endl;
                     std::tie(f, g, H_proj) = func.eval_with_hessian_proj(x);
 
                     int m = plane_arap_data.extra_grad_planes.size();
                     int n = H_proj.rows();
                     Eigen::MatrixXd J(m, n);
                     VectorXd rhs(n + m);
+                    std::cout << "why" << std::endl;
                     for (int idx = 0; idx < plane_arap_data.extra_grad_planes.size(); idx++) {
+                        std::cout << "test" << std::endl;
                         Eigen::MatrixXd H_con_proj;
                         VectorXd g_con;
                         double f_con;
@@ -475,7 +486,9 @@ int main(int argc, char *argv[]) {
                     KKT.bottomRightCorner(m, m) = Eigen::MatrixXd::Zero(m, m);
 
                     rhs.head(n) = -(g);
+                    std::cout << "solve" << std::endl;
                     d = KKT.fullPivLu().solve(rhs);
+                    std::cout << "done" << std::endl;
                     // d = H_proj.fullPivLu().solve(-g);
                     // d = cg_solver.compute(
                     //     H_proj + 1e-9 * TinyAD::identity<double>(x.size())).solve(-g);

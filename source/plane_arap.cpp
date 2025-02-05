@@ -768,10 +768,49 @@ TinyAD::ScalarFunction<4, double, long long> getConstraintFunction(
 
                              std::vector<int> face_indices = mesh_data.FaceNeighbors[vertex_idx];
 
-                             Eigen::Vector3<T> point = getPoint<T>(element.variables(face_indices[0]),
-                                                                   element.variables(face_indices[1]),
-                                                                   element.variables(face_indices[2]));
-                             Eigen::Vector4<T> extra_plane = element.variables(plane_idx);
+                             std::map<int, int> constrained_face;
+                             for (int i = 0; i < data.b.size(); i++) {
+                                 for (auto p: face_indices) {
+                                     int size = mesh_data.F[p].size();
+                                     for (int fi = 0; fi < size; fi++) {
+                                         if (mesh_data.F[p][fi] == data.b(i)) {
+                                             constrained_face[p] = i;
+                                         }
+                                     }
+                                 }
+                             }
+
+                             std::map<int, Eigen::Vector4<T> > gons;
+
+                             for (auto const &[key, val]: constrained_face) {
+                                 Eigen::Vector3<T> normal = element.variables(key).head(3).normalized();
+                                 Eigen::Vector3d point = bc.row(val);
+                                 T dist = normal.dot(point);
+                                 gons[key] = Eigen::Vector4<T>(normal(0), normal(1), normal(2), dist);
+                             }
+                             std::vector<Eigen::Vector4<T> > planes;
+                             for (int i = 0; i < 3; i++) {
+                                 int f = face_indices[i];
+                                 Eigen::Vector4<T> pol;
+                                 if (gons.find(f) != gons.end()) {
+                                     pol = gons[f];
+                                 } else {
+                                     pol = element.variables(f);
+                                 }
+                                 planes.push_back(pol);
+                             }
+
+                             Eigen::Vector4<T> pol;
+                             if (gons.find(plane_idx) != gons.end()) {
+                                 pol = gons[plane_idx];
+                             } else {
+                                 pol = element.variables(plane_idx);
+                             }
+                             planes.push_back(pol);
+
+
+                             Eigen::Vector3<T> point = getPoint<T>(planes[0], planes[1], planes[2]);
+                             Eigen::Vector4<T> extra_plane = planes[3];
                              Eigen::Vector3<T> normal = extra_plane.head(3).normalized();
                              T dist = normal.dot(point);
                              return (dist - extra_plane(3));
