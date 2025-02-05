@@ -51,6 +51,12 @@ TinyAD::ScalarFunction<4, double, long long> getFunction(
     poly_mesh_data &mesh_data,
     plane_arap_data &data);
 
+TinyAD::ScalarFunction<4, double, long long> getConstraintFunction(
+    const Eigen::MatrixXd &bc,
+    poly_mesh_data &mesh_data,
+    plane_arap_data &data,
+    int index);
+
 TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
     const Eigen::MatrixXd &bc,
     poly_mesh_data &mesh_data,

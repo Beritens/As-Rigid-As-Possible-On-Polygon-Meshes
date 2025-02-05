@@ -166,6 +166,15 @@ bool plane_arap_precomputation(
 
     for (int i = 0; i < data.V.rows(); i++) {
         std::vector<int> polygons = mesh_data.FaceNeighbors[i];
+        bool isConstraint = false;
+        for (int con = 0; con < b.size(); con++) {
+            if (b(con) == i) {
+                isConstraint = true;
+            }
+        }
+        if (isConstraint) {
+            continue;
+        }
 
         // nIdx.push_back(nis);
         for (int c = 3; c < polygons.size(); c++) {
@@ -455,7 +464,12 @@ bool global_distance_step(
     // solver.compute(newM);
     // solver.setMaxIterations(100000);
     // Eigen::VectorXd bestDistances = solver.solve(newB);
-    Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int> > solver;
+
+    Eigen::SparseMatrix<double> identity(newM.rows(), newM.cols());
+    identity.setIdentity();
+    newM += identity * 0.00000001;
+
+    Eigen::SparseLU<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int> > solver;
     solver.compute(newM);
     if (solver.info() != Eigen::Success) {
         std::cout << "decomposition failed" << std::endl;
@@ -464,6 +478,7 @@ bool global_distance_step(
     Eigen::VectorXd bestDistances = solver.solve(newB);
     // std::cout << bestDistances << std::endl;
 
+    // std::cout << newM << std::endl;
     for (int i = 0; i < mesh_data.Planes.rows(); i++) {
         bool skipped = data.distPos[i] < 0;
         if (skipped) {
@@ -734,22 +749,21 @@ TinyAD::ScalarFunction<3, double, long long> getBlockFunction(
     return func;
 }
 
-
-TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
+TinyAD::ScalarFunction<4, double, long long> getConstraintFunction(
     const Eigen::MatrixXd &bc,
     poly_mesh_data &mesh_data,
-    plane_arap_data &data) {
-    TinyAD::ScalarFunction<4, double, long long> func = TinyAD::scalar_function<4>(TinyAD::range(data.Polygons.rows()));
-
-    func.add_elements<4>(TinyAD::range(data.extra_grad_planes.size()),
-                         [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
+    plane_arap_data &data,
+    int index) {
+    TinyAD::ScalarFunction<4, double, long long> func = TinyAD::scalar_function<4>(
+        TinyAD::range(data.Polygons.rows()));
+    func.add_elements<5>(TinyAD::range(1),
+                         [&,index](auto &element) -> TINYAD_SCALAR_TYPE(element) {
                              using T = TINYAD_SCALAR_TYPE(
                                  element
                              );
 
-                             int e_idx = element.handle;
-                             int vertex_idx = data.extra_grad_planes[e_idx].vertex;
-                             int plane_vertex_idx = data.extra_grad_planes[e_idx].plane;
+                             int vertex_idx = data.extra_grad_planes[index].vertex;
+                             int plane_vertex_idx = data.extra_grad_planes[index].plane;
                              int plane_idx = mesh_data.FaceNeighbors[vertex_idx][plane_vertex_idx];
 
                              std::vector<int> face_indices = mesh_data.FaceNeighbors[vertex_idx];
@@ -760,25 +774,41 @@ TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
                              Eigen::Vector4<T> extra_plane = element.variables(plane_idx);
                              Eigen::Vector3<T> normal = extra_plane.head(3).normalized();
                              T dist = normal.dot(point);
-                             return 00.0 * (dist - extra_plane(3)) * (dist - extra_plane(3));
-
-                             // std::vector<int> point_a = data.higherDegreeConstraints[e_idx][0];
-                             // std::vector<int> point_b = data.higherDegreeConstraints[e_idx][1];
-
-
-                             //won't work with constrains for now (should be handled in precomputation)
-                             // Eigen::Vector3<T> a = getPoint<T>(element.variables(point_a[0]),
-                             //                                   element.variables(point_a[1]),
-                             //                                   element.variables(point_a[2]));
-                             //
-                             // Eigen::Vector3<T> b = getPoint<T>(element.variables(point_b[0]),
-                             //                                   element.variables(point_b[1]),
-                             //                                   element.variables(point_b[2]));
-                             //
-                             // return 1000000000000.0 * (a(0) - b(0)) * (a(0) - b(0)) +
-                             //        1000000000000.0 * (a(1) - b(1)) * (a(1) - b(1)) +
-                             //        1000000000000.0 * (a(2) - b(2)) * (a(2) - b(2));
+                             return (dist - extra_plane(3));
+                             // return 1000000.0 * (dist - extra_plane(3)) * (dist - extra_plane(3));
                          });
+    return func;
+}
+
+TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
+    const Eigen::MatrixXd &bc,
+    poly_mesh_data &mesh_data,
+    plane_arap_data &data) {
+    TinyAD::ScalarFunction<4, double, long long> func = TinyAD::scalar_function<4>(
+        TinyAD::range(data.Polygons.rows()));
+
+    // func.add_elements<5>(TinyAD::range(data.extra_grad_planes.size()),
+    //                      [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
+    //                          using T = TINYAD_SCALAR_TYPE(
+    //                              element
+    //                          );
+    //
+    //                          int e_idx = element.handle;
+    //                          int vertex_idx = data.extra_grad_planes[e_idx].vertex;
+    //                          int plane_vertex_idx = data.extra_grad_planes[e_idx].plane;
+    //                          int plane_idx = mesh_data.FaceNeighbors[vertex_idx][plane_vertex_idx];
+    //
+    //                          std::vector<int> face_indices = mesh_data.FaceNeighbors[vertex_idx];
+    //
+    //                          Eigen::Vector3<T> point = getPoint<T>(element.variables(face_indices[0]),
+    //                                                                element.variables(face_indices[1]),
+    //                                                                element.variables(face_indices[2]));
+    //                          Eigen::Vector4<T> extra_plane = element.variables(plane_idx);
+    //                          Eigen::Vector3<T> normal = extra_plane.head(3).normalized();
+    //                          T dist = normal.dot(point);
+    //                          return element.variables(data.Polygons.rows() + e_idx)(0) * (dist - extra_plane(3));
+    //                          // return 1000000.0 * (dist - extra_plane(3)) * (dist - extra_plane(3));
+    //                      });
 
     func.add_elements<6>(TinyAD::range(data.edges.size()),
                          [&](auto &element) -> TINYAD_SCALAR_TYPE(element) {
