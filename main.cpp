@@ -281,8 +281,9 @@ int main(int argc, char *argv[]) {
                                     // func = getEdgeFunction(constraints, mesh_data, plane_arap_data);
                                     constraintFunctions.clear();
                                     for (int l_id = 0; l_id < plane_arap_data.extra_grad_planes.size(); l_id++) {
-                                        constraintFunctions.push_back(
-                                            getConstraintFunction(constraints, mesh_data, plane_arap_data, l_id));
+                                        TinyAD::ScalarFunction<4, double, long long> con_fun = getConstraintFunction(
+                                            constraints, mesh_data, plane_arap_data, l_id);
+                                        constraintFunctions.push_back(std::move(con_fun));
                                     }
                                 }
                             }
@@ -472,11 +473,14 @@ int main(int argc, char *argv[]) {
                         Eigen::MatrixXd H_con_proj;
                         VectorXd g_con;
                         double f_con;
-                        std::tie(f_con, g_con, H_con_proj) = constraintFunctions[idx].eval_with_hessian_proj(x);
+                        auto &con_fun = constraintFunctions[idx];
+                        std::tie(f_con, g_con, H_con_proj) = con_fun.eval_with_hessian_proj(x);
+                        std::cout << "after" << std::endl;
                         J.row(idx) = g_con.transpose();
                         H_proj += H_con_proj;
                         g += g_con * plane_arap_data.lagrangeMultipliers[idx];
                         rhs(n + idx) = -f_con;
+                        // rhs(n + idx) = 0;
                     }
 
                     Eigen::MatrixXd KKT(n + m, n + m);

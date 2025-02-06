@@ -355,38 +355,13 @@ bool global_distance_step(
 
         Eigen::Vector3d coefficient = plane_normal.transpose() * invNorm;
 
-        lagrangeTriplets.emplace_back(extra_rows, plane_index, -1.0);
-        lagrangeTriplets.emplace_back(extra_rows, distance_indices[0], coefficient(0));
-        lagrangeTriplets.emplace_back(extra_rows, distance_indices[1], coefficient(1));
-        lagrangeTriplets.emplace_back(extra_rows, distance_indices[2], coefficient(2));
-        extra_rows++;
+        // lagrangeTriplets.emplace_back(extra_rows, plane_index, -1.0);
+        // lagrangeTriplets.emplace_back(extra_rows, distance_indices[0], coefficient(0));
+        // lagrangeTriplets.emplace_back(extra_rows, distance_indices[1], coefficient(1));
+        // lagrangeTriplets.emplace_back(extra_rows, distance_indices[2], coefficient(2));
+        // extra_rows++;
     }
 
-    // //go over all vertices
-    // for (int i = 0; i < nIdx.size(); i++) {
-    //     //go over all constraints
-    //     for (int c = 1; c < nIdx[i].size(); c++) {
-    //         //go over dimensions
-    //         // std::cout << invNs[i][0] << std::endl;
-    //         // std::cout << invNs[i][c] << std::endl;
-    //         for (int d = 0; d < 3; d++) {
-    //             //go over data
-    //             std::map<int, double> values;
-    //             for (int nor = 0; nor < 3; nor++) {
-    //                 // mTriplets.emplace_back(newRows + extra_rows + d, nIdx[i][0][nor], invNs[i][0](d, nor));
-    //                 values[nIdx[i][0][nor]] += invNs[i][0](d, nor);
-    //                 values[nIdx[i][c][nor]] -= invNs[i][c](d, nor);
-    //             }
-    //
-    //             for (const auto &[key, value]: values) {
-    //                 lagrangeTriplets.emplace_back(extra_rows, key, value);
-    //
-    //                 // lagrangeTriplets.emplace_back(key, newRows + extra_rows, value);
-    //             }
-    //             extra_rows++;
-    //         }
-    //     }
-    // }
 
     Eigen::SparseMatrix<double> lagrangeM(extra_rows, M.rows());
     lagrangeM.setFromTriplets(lagrangeTriplets.begin(), lagrangeTriplets.end());
@@ -465,11 +440,11 @@ bool global_distance_step(
     // solver.setMaxIterations(100000);
     // Eigen::VectorXd bestDistances = solver.solve(newB);
 
-    Eigen::SparseMatrix<double> identity(newM.rows(), newM.cols());
-    identity.setIdentity();
-    newM += identity * 0.00000001;
+    // Eigen::SparseMatrix<double> identity(newM.rows(), newM.cols());
+    // identity.setIdentity();
+    // newM += identity * 0.00001;
 
-    Eigen::SparseLU<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int> > solver;
+    Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int> > solver;
     solver.compute(newM);
     if (solver.info() != Eigen::Success) {
         std::cout << "decomposition failed" << std::endl;
@@ -478,7 +453,16 @@ bool global_distance_step(
     Eigen::VectorXd bestDistances = solver.solve(newB);
     // std::cout << bestDistances << std::endl;
 
-    // std::cout << newM << std::endl;
+    // std::cout << Eigen::MatrixXd(newM) << std::endl;
+    // std::cout << newB << std::endl;
+
+    // std::cout << combinedMatrix << std::endl;
+    // std::cout << b << std::endl;
+
+    // std::cout << "result" << std::endl;
+    // std::cout << bestDistances << std::endl;
+    // std::cout << "check" << std::endl;
+    // std::cout << newM * bestDistances << std::endl;
     for (int i = 0; i < mesh_data.Planes.rows(); i++) {
         bool skipped = data.distPos[i] < 0;
         if (skipped) {
@@ -488,9 +472,10 @@ bool global_distance_step(
         mesh_data.Planes(i, 3) = bestDistances(data.distPos[i]);
     }
 
-    for (int i = 0; i < extra_rows; i++) {
-        data.lagrangeMultipliers[i] = bestDistances[b.size() - data.conP.size() + i];
-    }
+    //testweise rausgenommen. wenn es funktioniert sollte es drin sein
+    // for (int i = 0; i < extra_rows; i++) {
+    //     data.lagrangeMultipliers[i] = bestDistances[b.size() - data.conP.size() + i];
+    // }
 
     return true;
 }
@@ -814,7 +799,6 @@ TinyAD::ScalarFunction<4, double, long long> getConstraintFunction(
                              Eigen::Vector3<T> normal = extra_plane.head(3).normalized();
                              T dist = normal.dot(point);
                              return (dist - extra_plane(3));
-                             // return 1000000.0 * (dist - extra_plane(3)) * (dist - extra_plane(3));
                          });
     return func;
 }
