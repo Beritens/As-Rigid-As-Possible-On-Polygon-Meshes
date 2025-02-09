@@ -166,9 +166,8 @@ int main(int argc, char *argv[]) {
     std::atomic<bool> useBlockFunc(false);
     std::atomic<bool> noInitalGuess(false);
     std::atomic<bool> triangleVersion(false);
-    std::mutex m;
-    bool newCons = false;
-    bool changedCons = false;
+    std::atomic<bool> newCons(false);
+    std::atomic<bool> changedCons(false);
     std::atomic<bool> onlyGradientDescent(false);
     std::atomic<bool> onlyDistantStep(false);
 
@@ -181,7 +180,6 @@ int main(int argc, char *argv[]) {
     std::atomic<int> screenshotIt(-1);
 
     std::vector<int> screenshotIterations = {0, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000};
-    std::mutex m2;
     std::thread optimization_thread(
         [&]() {
             //ARAP precomputations
@@ -246,19 +244,23 @@ int main(int argc, char *argv[]) {
 
             while (true) {
                 {
-                    std::cout << "while???" << std::endl;
+                    if (redraw.load(std::memory_order_relaxed)) {
+                        // don't do anything if redrawing to avoid race condition stuff
+                        continue;
+                    }
                     // no termination condition: easier to change constraints and settings without restarting the deformation
                     // in theory: terminate after energy change since last iteration is small enough
                     i++;
                     bool switchedEnergy = (triangleVersion.load(std::memory_order_relaxed) && (
                                                arap_data.energy == igl::ARAP_ENERGY_TYPE_ELEMENTS) != face.load(
                                                std::memory_order_relaxed));
-                    if (newCons || changedCons || switchedEnergy) {
+                    if (newCons.load(std::memory_order_relaxed) || changedCons.load(std::memory_order_relaxed) ||
+                        switchedEnergy) {
                         //precompute again when constraints change or versions changed
 
                         begin = std::chrono::steady_clock::now();
                         i = 0;
-                        if (newCons) {
+                        if (newCons.load(std::memory_order_relaxed)) {
                             con_idx.conservativeResize(tempConP.size());
                             for (int j = 0; j < tempConP.size(); j++) {
                                 con_idx(j) = tempConP(j);
@@ -297,8 +299,8 @@ int main(int argc, char *argv[]) {
                         for (int j = 0; j < con_idx.size(); j++) {
                             constraints.row(j) = tempConstraints.row(j);
                         }
-                        newCons = false;
-                        changedCons = false;
+                        newCons.store(false, std::memory_order_relaxed);
+                        changedCons.store(false, std::memory_order_relaxed);
                         if (screenshots.load(std::memory_order_relaxed)) {
                             calcNewV(mesh_data);
                             screenshotIt.store(-2, std::memory_order_relaxed);
@@ -469,13 +471,14 @@ int main(int argc, char *argv[]) {
                     VectorXd rhs(n + m);
                     std::cout << "why" << std::endl;
                     for (int idx = 0; idx < plane_arap_data.extra_grad_planes.size(); idx++) {
-                        std::cout << "test" << std::endl;
                         Eigen::MatrixXd H_con_proj;
                         VectorXd g_con;
                         double f_con;
                         auto &con_fun = constraintFunctions[idx];
+                        std::cout << "test" << std::endl;
                         std::tie(f_con, g_con, H_con_proj) = con_fun.eval_with_hessian_proj(x);
-                        std::cout << "after" << std::endl;
+
+                        std::cout << "test2" << std::endl;
                         J.row(idx) = g_con.transpose();
                         H_proj += H_con_proj;
                         g += g_con * plane_arap_data.lagrangeMultipliers[idx];
@@ -640,8 +643,7 @@ int main(int argc, char *argv[]) {
                 for (int j = 0; j < tempConP.size(); j++) {
                     tempConstraints.row(j) = mesh_data.V.row(tempConP(j));
                 } {
-                    std::lock_guard<std::mutex> lock(m2);
-                    newCons = true;
+                    newCons.store(true, std::memory_order_relaxed);
                 }
                 viewer.data().clear_points();
                 for (int i = 0; i < tempConstraints.rows(); i++) {
@@ -703,8 +705,7 @@ int main(int argc, char *argv[]) {
                 }
                 viewer.data().add_points(tempConstraints.row(i), Eigen::RowVector3d(1, 0, 0));
             } {
-                std::lock_guard<std::mutex> lock(m2);
-                changedCons = true;
+                changedCons.store(true, std::memory_order_relaxed);
             }
         }
         return false;
@@ -720,6 +721,36 @@ int main(int argc, char *argv[]) {
         if (key == GLFW_KEY_S) {
             measurementsFile.close();
             measure.store(false, std::memory_order_relaxed);
+        }
+
+        if (key == GLFW_KEY_R) {
+            mesh_data.originalV = mesh_data.V;
+            newCons.store(true, std::memory_order_relaxed);
+        }
+        if (key == GLFW_KEY_P) {
+            std::vector<std::array<double, 3> > meshVertexPositions;
+            std::vector<std::vector<size_t> > meshFaceIndices;
+
+            for (int i = 0; i < mesh_data.V.rows(); i++) {
+                std::array<double, 3> vertex = {mesh_data.V(i, 0), mesh_data.V(i, 1), mesh_data.V(i, 2)};
+                meshVertexPositions.push_back(vertex);
+            }
+            for (int i = 0; i < mesh_data.F.size(); i++) {
+                std::vector<size_t> face_indices;
+                size_t size = mesh_data.F[i].size();
+                face_indices.reserve(size);
+                for (int j = 0; j < size; j++) {
+                    face_indices.push_back(mesh_data.F[i][j]);
+                }
+                meshFaceIndices.push_back(face_indices);
+            }
+
+
+            happly::PLYData plyOut;
+
+            plyOut.addVertexPositions(meshVertexPositions);
+            plyOut.addFaceIndices(meshFaceIndices);
+            plyOut.write("../out/output.ply", happly::DataFormat::ASCII);
         }
         if (key == GLFW_KEY_M) {
             //move last selected constraint (used for experiments)
@@ -742,8 +773,7 @@ int main(int argc, char *argv[]) {
                 }
                 viewer.data().add_points(tempConstraints.row(i), Eigen::RowVector3d(1, 0, 0));
             } {
-                std::lock_guard<std::mutex> lock(m2);
-                changedCons = true;
+                changedCons.store(true, std::memory_order_relaxed);
             }
         }
         return false;

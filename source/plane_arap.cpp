@@ -297,17 +297,6 @@ bool global_distance_step(
             vecs.push_back(mesh_data.Planes.row(k));
             j++;
         }
-        //
-        // Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
-        // Eigen::Vector3d normal2 = vecs[1].head(3).normalized();
-        // Eigen::Vector3d normal3 = vecs[2].head(3).normalized();
-        //
-        // Eigen::Matrix3d m;
-        // m.row(0) = normal1;
-        // m.row(1) = normal2;
-        // m.row(2) = normal3;
-        //
-        // Eigen::Vector3d dist = m * bc.row(i).transpose();
         j = 0;
         for (auto k: mesh_data.FaceNeighbors[data.b(i)]) {
             double dist = vecs[j].head(3).normalized().dot(bc.row(i));
@@ -330,7 +319,6 @@ bool global_distance_step(
             int next = (j + 1) % size;
             int n1 = mesh_data.VertNeighbors[i][j];
             int n2 = mesh_data.VertNeighbors[i][next];
-            //anders probieren. einfach laplacian benutzen und dann direkt edge rein addieren I guess
             insertInB(b, i, n1, data.cotanWeights[i][j * 3 + 2], data.V, rot);
             insertInB(b, i, n2, data.cotanWeights[i][j * 3 + 1], data.V, rot);
             insertInB(b, n2, n1, data.cotanWeights[i][j * 3], data.V, rot);
@@ -351,15 +339,16 @@ bool global_distance_step(
         int plane_index = mesh_data.FaceNeighbors[vertex_index][plane_vertex_index];
         Eigen::MatrixXd invNorm = invNs[vertex_index];
         std::vector<int> distance_indices = nIdx[vertex_index];
-        Eigen::Vector3d plane_normal = data.Polygons.row(plane_index).head(3).normalized();
+        Eigen::Vector3d plane_normal = mesh_data.Planes.row(plane_index).head(3).normalized();
 
         Eigen::Vector3d coefficient = plane_normal.transpose() * invNorm;
 
-        // lagrangeTriplets.emplace_back(extra_rows, plane_index, -1.0);
-        // lagrangeTriplets.emplace_back(extra_rows, distance_indices[0], coefficient(0));
-        // lagrangeTriplets.emplace_back(extra_rows, distance_indices[1], coefficient(1));
-        // lagrangeTriplets.emplace_back(extra_rows, distance_indices[2], coefficient(2));
-        // extra_rows++;
+        //this adds the lagrange constraint stuff
+        lagrangeTriplets.emplace_back(extra_rows, plane_index, -1.0);
+        lagrangeTriplets.emplace_back(extra_rows, distance_indices[0], coefficient(0));
+        lagrangeTriplets.emplace_back(extra_rows, distance_indices[1], coefficient(1));
+        lagrangeTriplets.emplace_back(extra_rows, distance_indices[2], coefficient(2));
+        extra_rows++;
     }
 
 
@@ -463,6 +452,7 @@ bool global_distance_step(
     // std::cout << bestDistances << std::endl;
     // std::cout << "check" << std::endl;
     // std::cout << newM * bestDistances << std::endl;
+
     for (int i = 0; i < mesh_data.Planes.rows(); i++) {
         bool skipped = data.distPos[i] < 0;
         if (skipped) {
@@ -472,10 +462,9 @@ bool global_distance_step(
         mesh_data.Planes(i, 3) = bestDistances(data.distPos[i]);
     }
 
-    //testweise rausgenommen. wenn es funktioniert sollte es drin sein
-    // for (int i = 0; i < extra_rows; i++) {
-    //     data.lagrangeMultipliers[i] = bestDistances[b.size() - data.conP.size() + i];
-    // }
+    for (int i = 0; i < extra_rows; i++) {
+        data.lagrangeMultipliers[i] = bestDistances[b.size() - data.conP.size() + i];
+    }
 
     return true;
 }
