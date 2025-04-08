@@ -41,6 +41,10 @@ bool global_distance_step(
     poly_mesh_data &mesh_data,
     plane_arap_data &data);
 
+void adjustPlaneNormals(
+    poly_mesh_data &mesh_data,
+    plane_arap_data &data);
+
 
 void getRotations(
     poly_mesh_data &mesh_data,

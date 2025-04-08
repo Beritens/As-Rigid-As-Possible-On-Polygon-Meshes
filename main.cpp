@@ -364,7 +364,7 @@ int main(int argc, char *argv[]) {
 
                 double distanceStepImprovement = 0;
                 if (!onlyGradientDescent.load(std::memory_order_relaxed)) {
-                    std::cout << "what about here???" << std::endl;
+                    // std::cout << "what about here???" << std::endl;
                     //global distance step
 
                     // tempEnergy = func.eval(x);
@@ -390,15 +390,18 @@ int main(int argc, char *argv[]) {
                     // } else {
                     getRotations(mesh_data, plane_arap_data);
                     global_distance_step(bc, mesh_data, plane_arap_data);
+
+                    getRotations(mesh_data, plane_arap_data);
+                    adjustPlaneNormals(mesh_data, plane_arap_data);
                     // }
                 }
 
 
-                std::cout << "after distance step???" << std::endl;
+                // std::cout << "after distance step???" << std::endl;
 
                 calcNewV(mesh_data);
 
-                std::cout << "1???" << std::endl;
+                // std::cout << "1???" << std::endl;
 
                 temp2 = std::chrono::steady_clock::now();
                 long long distanceTime = std::chrono::duration_cast<std::chrono::nanoseconds>(temp2 - temp1).count();
@@ -413,7 +416,7 @@ int main(int argc, char *argv[]) {
                     }
                 }
 
-                std::cout << "2???" << std::endl;
+                // std::cout << "2???" << std::endl;
                 redraw.store(true, std::memory_order_relaxed);
 
                 temp1 = std::chrono::steady_clock::now();
@@ -425,23 +428,23 @@ int main(int argc, char *argv[]) {
                 // }
 
 
-                std::cout << "3???" << std::endl;
+                // std::cout << "3???" << std::endl;
                 // getRotations(mesh_data, plane_arap_data);
-                x = func.x_from_data([&](int v_idx)-> Eigen::Vector4d {
-                    if (v_idx < mesh_data.Planes.rows()) {
-                        return mesh_data.Planes.row(v_idx);
-                    } else {
-                        double multiplier = plane_arap_data.lagrangeMultipliers[v_idx - mesh_data.Planes.rows()];
-                        Eigen::Vector4d vector(multiplier, 0.0, 0.0, 0.0);
-                        return vector;
-                    }
-                });
+                // x = func.x_from_data([&](int v_idx)-> Eigen::Vector4d {
+                //     if (v_idx < mesh_data.Planes.rows()) {
+                //         return mesh_data.Planes.row(v_idx);
+                //     } else {
+                //         double multiplier = plane_arap_data.lagrangeMultipliers[v_idx - mesh_data.Planes.rows()];
+                //         Eigen::Vector4d vector(multiplier, 0.0, 0.0, 0.0);
+                //         return vector;
+                //     }
+                // });
 
                 // x_block = funcBlock.x_from_data([&](int v_idx) {
                 //     return mesh_data.Planes.row(v_idx).head(3).normalized();
                 // });
 
-                std::cout << "4???" << std::endl;
+                // std::cout << "4???" << std::endl;
 
                 if (onlyDistantStep.load(std::memory_order_relaxed)) {
                     double afterDistanceStepF = func.eval(x);
@@ -454,90 +457,90 @@ int main(int argc, char *argv[]) {
                     continue;
                 }
 
-                VectorXd d;
-                VectorXd g;
-                double f;
+                // VectorXd d;
+                // VectorXd g;
+                // double f;
 
                 std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-                if (conjugate.load(std::memory_order_relaxed)) {
-                    //truncated newton
-                    Eigen::MatrixXd H_proj;
-                    std::cout << "hm" << std::endl;
-                    std::tie(f, g, H_proj) = func.eval_with_hessian_proj(x);
+                // if (conjugate.load(std::memory_order_relaxed)) {
+                //     //truncated newton
+                //     Eigen::MatrixXd H_proj;
+                // std::cout << "hm" << std::endl;
+                //     std::tie(f, g, H_proj) = func.eval_with_hessian_proj(x);
+                //
+                //     int m = plane_arap_data.extra_grad_planes.size();
+                //     int n = H_proj.rows();
+                //     Eigen::MatrixXd J(m, n);
+                //     VectorXd rhs(n + m);
+                //     std::cout << "why" << std::endl;
+                //     for (int idx = 0; idx < plane_arap_data.extra_grad_planes.size(); idx++) {
+                //         Eigen::MatrixXd H_con_proj;
+                //         VectorXd g_con;
+                //         double f_con;
+                //         auto &con_fun = constraintFunctions[idx];
+                //         std::cout << "test" << std::endl;
+                //         std::tie(f_con, g_con, H_con_proj) = con_fun.eval_with_hessian_proj(x);
+                //
+                //         std::cout << "test2" << std::endl;
+                //         J.row(idx) = g_con.transpose();
+                //         H_proj += H_con_proj;
+                //         g += g_con * plane_arap_data.lagrangeMultipliers[idx];
+                //         rhs(n + idx) = -f_con;
+                //         // rhs(n + idx) = 0;
+                //     }
+                //
+                //     Eigen::MatrixXd KKT(n + m, n + m);
+                //     KKT.topLeftCorner(n, n) = H_proj;
+                //     KKT.topRightCorner(n, m) = J.transpose();
+                //     KKT.bottomLeftCorner(m, n) = J;
+                //     KKT.bottomRightCorner(m, m) = Eigen::MatrixXd::Zero(m, m);
+                //
+                //     rhs.head(n) = -(g);
+                //     std::cout << "solve" << std::endl;
+                //     d = KKT.fullPivLu().solve(rhs);
+                //     std::cout << "done" << std::endl;
+                //     // d = H_proj.fullPivLu().solve(-g);
+                //     // d = cg_solver.compute(
+                //     //     H_proj + 1e-9 * TinyAD::identity<double>(x.size())).solve(-g);
+                // } else {
+                //     //gradient descent
+                //     std::tie(f, g) = func.eval_with_gradient(x);
+                //     d = -g * 0.03;
+                // }
 
-                    int m = plane_arap_data.extra_grad_planes.size();
-                    int n = H_proj.rows();
-                    Eigen::MatrixXd J(m, n);
-                    VectorXd rhs(n + m);
-                    std::cout << "why" << std::endl;
-                    for (int idx = 0; idx < plane_arap_data.extra_grad_planes.size(); idx++) {
-                        Eigen::MatrixXd H_con_proj;
-                        VectorXd g_con;
-                        double f_con;
-                        auto &con_fun = constraintFunctions[idx];
-                        std::cout << "test" << std::endl;
-                        std::tie(f_con, g_con, H_con_proj) = con_fun.eval_with_hessian_proj(x);
-
-                        std::cout << "test2" << std::endl;
-                        J.row(idx) = g_con.transpose();
-                        H_proj += H_con_proj;
-                        g += g_con * plane_arap_data.lagrangeMultipliers[idx];
-                        rhs(n + idx) = -f_con;
-                        // rhs(n + idx) = 0;
-                    }
-
-                    Eigen::MatrixXd KKT(n + m, n + m);
-                    KKT.topLeftCorner(n, n) = H_proj;
-                    KKT.topRightCorner(n, m) = J.transpose();
-                    KKT.bottomLeftCorner(m, n) = J;
-                    KKT.bottomRightCorner(m, m) = Eigen::MatrixXd::Zero(m, m);
-
-                    rhs.head(n) = -(g);
-                    std::cout << "solve" << std::endl;
-                    d = KKT.fullPivLu().solve(rhs);
-                    std::cout << "done" << std::endl;
-                    // d = H_proj.fullPivLu().solve(-g);
-                    // d = cg_solver.compute(
-                    //     H_proj + 1e-9 * TinyAD::identity<double>(x.size())).solve(-g);
-                } else {
-                    //gradient descent
-                    std::tie(f, g) = func.eval_with_gradient(x);
-                    d = -g * 0.03;
-                }
-
-                TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
-                double measureF = f;
-
-                distanceStepImprovement = f - tempEnergy;
-                tempEnergy = f;
-
-                temp2 = std::chrono::steady_clock::now();
-                long long gradientTime = std::chrono::duration_cast<std::chrono::nanoseconds>(temp2 - temp1).count();
-                //measurement
-
-                // x = TinyAD::line_search(x, d, f, g, func, 1.0,
-                //                         0.5, 20);
-                x += d.head(x.size());
-                for (int con_idx = 0; con_idx < plane_arap_data.extra_grad_planes.size(); con_idx++) {
-                    plane_arap_data.lagrangeMultipliers[con_idx] += d(x.size() + con_idx);
-                }
-                std::cout << "where???" << std::endl;
-                // f = func.eval(x);
-
-                double descentImprovement = f - tempEnergy;
-
-
-                if (measure.load(std::memory_order_relaxed)) {
-                    //write measurements
-                    measurementsFile << i << " , "
-                            << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() << " , "
-                            << distanceTime << " , "
-                            << gradientTime << " , "
-                            << measureF << " , "
-                            << distanceStepImprovement << " , "
-                            << descentImprovement;
-                    measurementsFile << "\n";
-                }
+                // TINYAD_DEBUG_OUT("Energy in iteration " << i << ": " << f);
+                // double measureF = f;
+                //
+                // distanceStepImprovement = f - tempEnergy;
+                // tempEnergy = f;
+                //
+                // temp2 = std::chrono::steady_clock::now();
+                // long long gradientTime = std::chrono::duration_cast<std::chrono::nanoseconds>(temp2 - temp1).count();
+                // //measurement
+                //
+                // // x = TinyAD::line_search(x, d, f, g, func, 1.0,
+                // //                         0.5, 20);
+                // x += d.head(x.size());
+                // for (int con_idx = 0; con_idx < plane_arap_data.extra_grad_planes.size(); con_idx++) {
+                //     plane_arap_data.lagrangeMultipliers[con_idx] += d(x.size() + con_idx);
+                // }
+                // std::cout << "where???" << std::endl;
+                // // f = func.eval(x);
+                //
+                // double descentImprovement = f - tempEnergy;
+                //
+                //
+                // if (measure.load(std::memory_order_relaxed)) {
+                //     //write measurements
+                //     measurementsFile << i << " , "
+                //             << std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() << " , "
+                //             << distanceTime << " , "
+                //             << gradientTime << " , "
+                //             << measureF << " , "
+                //             << distanceStepImprovement << " , "
+                //             << descentImprovement;
+                //     measurementsFile << "\n";
+                // }
 
 
                 // if (useBlockFunc.load(std::memory_order_relaxed)) {
@@ -546,42 +549,42 @@ int main(int argc, char *argv[]) {
                 //     });
 
                 // } else {
-                std::cout << "here???" << std::endl;
-                func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
-                    if (v_idx < mesh_data.Planes.rows()) {
-                        mesh_data.Planes.row(v_idx) = p;
-                        mesh_data.Planes.row(v_idx).head(3) = mesh_data.Planes.row(v_idx).head(3).normalized();
-                    } else {
-                        plane_arap_data.lagrangeMultipliers[v_idx - mesh_data.Planes.rows()] = p(0);
-                    }
-                });
+                // std::cout << "here???" << std::endl;
+                // func.x_to_data(x, [&](int v_idx, const Eigen::VectorXd &p) {
+                //     if (v_idx < mesh_data.Planes.rows()) {
+                //         mesh_data.Planes.row(v_idx) = p;
+                //         mesh_data.Planes.row(v_idx).head(3) = mesh_data.Planes.row(v_idx).head(3).normalized();
+                //     } else {
+                //         plane_arap_data.lagrangeMultipliers[v_idx - mesh_data.Planes.rows()] = p(0);
+                //     }
+                // });
                 // }
-                std::cout << "this stuff???" << std::endl;
+                // std::cout << "this stuff???" << std::endl;
 
                 // projection function
-                for (int conIdx = 0; conIdx < con_idx.size(); conIdx++) {
-                    std::vector<Eigen::Vector4d> vecs;
-                    int j = 0;
-                    for (auto k: mesh_data.FaceNeighbors[con_idx(conIdx)]) {
-                        vecs.push_back(mesh_data.Planes.row(k));
-                        j++;
-                    }
-                    // Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
-                    // Eigen::Vector3d normal2 = vecs[1].head(3).normalized();
-                    // Eigen::Vector3d normal3 = vecs[2].head(3).normalized();
-                    //
-                    // Eigen::Matrix3d normM;
-                    // normM.row(0) = normal1;
-                    // normM.row(1) = normal2;
-                    // normM.row(2) = normal3;
-                    //
-                    // Eigen::Vector3d dist = normM * constraints.row(conIdx).transpose();
-                    j = 0;
-                    for (auto k: mesh_data.FaceNeighbors[con_idx(conIdx)]) {
-                        mesh_data.Planes(k, 3) = vecs[j].head(3).normalized().dot(constraints.row(conIdx));
-                        j++;
-                    }
-                }
+                // for (int conIdx = 0; conIdx < con_idx.size(); conIdx++) {
+                //     std::vector<Eigen::Vector4d> vecs;
+                //     int j = 0;
+                //     for (auto k: mesh_data.FaceNeighbors[con_idx(conIdx)]) {
+                //         vecs.push_back(mesh_data.Planes.row(k));
+                //         j++;
+                //     }
+                //     // Eigen::Vector3d normal1 = vecs[0].head(3).normalized();
+                //     // Eigen::Vector3d normal2 = vecs[1].head(3).normalized();
+                //     // Eigen::Vector3d normal3 = vecs[2].head(3).normalized();
+                //     //
+                //     // Eigen::Matrix3d normM;
+                //     // normM.row(0) = normal1;
+                //     // normM.row(1) = normal2;
+                //     // normM.row(2) = normal3;
+                //     //
+                //     // Eigen::Vector3d dist = normM * constraints.row(conIdx).transpose();
+                //     j = 0;
+                //     for (auto k: mesh_data.FaceNeighbors[con_idx(conIdx)]) {
+                //         mesh_data.Planes(k, 3) = vecs[j].head(3).normalized().dot(constraints.row(conIdx));
+                //         j++;
+                //     }
+                // }
 
                 if (doScreenshot) {
                     screenshotIt.store(2 * i + 1, std::memory_order_relaxed);

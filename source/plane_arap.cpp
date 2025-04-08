@@ -954,3 +954,77 @@ TinyAD::ScalarFunction<4, double, long long> getEdgeFunction(
                          });
     return func;
 }
+
+Eigen::Matrix<double, -1, 1> get_average_plane_normal(Eigen::MatrixXd Ns) {
+    const int rows = Ns.rows();
+    Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(Ns.cols(), Ns.cols());
+    for (size_t i = 0; i < rows; i++) {
+        Eigen::Matrix<double, -1, 1> N = Ns.row(i);
+        //switched to get matrix
+        Q += N * N.transpose();
+    }
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigensolver(Q);
+    if (eigensolver.info() != Eigen::Success) abort();
+    //first column gave some weird results, last column seems to contain normal
+    return eigensolver.eigenvectors().col(Ns.cols() - 1);
+}
+
+// Eigen::Matrix<double, -1, 1> get_average_plane_normal(Eigen::MatrixXd Ns) {
+//     const int rows = Ns.rows();
+//     Eigen::VectorXd normal = Eigen::VectorXd::Zero(Ns.cols());
+//     for (size_t i = 0; i < rows; i++) {
+//         Eigen::Matrix<double, -1, 1> N = Ns.row(i);
+//         normal = normal + N;
+//         //switched to get matrix
+//     }
+//     return normal.normalized();
+// }
+template<typename T>
+int sgn(T val) {
+    return (T(0) < val) - (val < T(0));
+}
+
+void adjustPlaneNormals(
+    poly_mesh_data &mesh_data,
+    plane_arap_data &data
+) {
+    // std::cout << data.Polygons.row(0) << std::endl;
+    // Eigen::Matrix3d rot_0 = data.R.block<3, 3>(0, 0 * 3);
+    Eigen::Vector3d norm = mesh_data.Planes.row(0).head(3);
+    std::cout << "norm" << std::endl;
+    std::cout << norm << std::endl;
+    // std::cout << rot_0 << std::endl;
+
+    // go over each face
+    for (int i = 0; i < mesh_data.F.size(); i++) {
+        Eigen::MatrixXd normals = Eigen::MatrixXd::Zero(mesh_data.F[i].size(), 3);
+        for (int j = 0; j < mesh_data.F[i].size(); j++) {
+            int v = mesh_data.F[i][j];
+            // get rotations from verts
+            Eigen::Matrix3d rot = data.R.block<3, 3>(0, v * 3);
+            // std::cout << rot << std::endl;
+            // calculate rotated normal
+            // put it in a matrix
+            normals.row(j) = rot * data.Polygons.row(i).head(3).transpose();
+        }
+        // get average normal
+        Eigen::Vector3d normal = get_average_plane_normal(normals);
+        double dot1 = 0.0;
+        double dot2 = 0.0;
+
+        for (int j = 0; j < mesh_data.F[i].size(); j++) {
+            dot1 += normals.row(j).dot(normal);
+            dot2 += normals.row(j).dot(-normal);
+        }
+
+
+        Eigen::Vector4d plane = mesh_data.Planes.row(i);
+        Eigen::Vector3d old_norm = plane.head(3);
+        double sign = old_norm.dot(normal);
+        // if (dot2 > dot1) {
+        //     normal = -normal;
+        // }
+        plane.head(3) = (sign * normal).normalized();
+        mesh_data.Planes.row(i) = plane;
+    }
+}
